@@ -1,0 +1,29 @@
+# Composer
+backend/vendor/
+composer.lock
+
+# Node (se usar mix/vite)
+backend/node_modules/
+
+# Laravel
+backend/storage/*.key
+backend/storage/app/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/storage/logs/
+backend/bootstrap/cache/*.php
+backend/.env
+
+# Docker
+db_data/
+redis_data/
+composer-cache/
+.env
+
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
