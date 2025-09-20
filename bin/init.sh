@@ -42,4 +42,19 @@ docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan storage:link |
 echo "Gerando key do app..."
 docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan key:generate
 
+echo "Gerando JWT_SECRET (jwt:secret)..."
+docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan jwt:secret --force || true
+
+# Optionally run migrations and seeders
+if [ "${RUN_DB_MIGRATIONS:-0}" = "1" ]; then
+  echo "Subindo serviços de banco (db, redis) para migrações..."
+  docker compose -f "$ROOT_DIR/docker-compose.yml" up -d db redis
+  echo "Executando migrações..."
+  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan migrate --force || true
+  if [ "${RUN_DB_SEEDERS:-0}" = "1" ]; then
+    echo "Executando seeders..."
+    docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan db:seed --force || true
+  fi
+fi
+
 echo "Init concluído."

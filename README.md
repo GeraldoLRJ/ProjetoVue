@@ -19,9 +19,31 @@ Passo a passo
 
 2) Inicializar o projeto Laravel (cria `backend/` e o `.env`):
 	./bin/init.sh
+	- Este passo também gera automaticamente a APP_KEY e o JWT_SECRET no `backend/.env`.
+
+ 2a) (Opcional) Rodar migrações/seeders automaticamente pelo init:
+
+	# Apenas migrações
+	RUN_DB_MIGRATIONS=1 ./bin/init.sh
+
+	# Migrações + seeders
+	RUN_DB_MIGRATIONS=1 RUN_DB_SEEDERS=1 ./bin/init.sh
 
 3) Subir os serviços:
 	docker compose up -d --build
+
+ 3a) (Se não usou o passo 2a) Rodar as migrações/seeders manualmente:
+
+	# Forma 1 (recomendada): run cria um container efêmero do artisan
+	# Observação: o banco (db) precisa estar no ar. Se necessário: `docker compose up -d db`
+	docker compose run --rm artisan migrate
+	# Opcional: seeders
+	docker compose run --rm artisan db:seed
+
+	# Forma 2 (exec): requer o container da app rodando
+	# Primeiro suba o app: `docker compose up -d app`
+	docker compose exec app php artisan migrate
+	docker compose exec app php artisan db:seed
 
 4) Acessar a aplicação:
 	http://localhost:8080
@@ -57,6 +79,7 @@ Permissões
 
 Observações
 - O `.env` interno do Laravel já aponta para `db` (Postgres) e `redis` (Redis) dentro da rede do Docker.
+- O `./bin/init.sh` gera automaticamente a APP_KEY e o JWT_SECRET. O arquivo `backend/.env` está no `.gitignore` e não deve ser versionado.
 - Para instalar pacotes Composer:
   docker compose run --rm composer require vendor/pacote
 
