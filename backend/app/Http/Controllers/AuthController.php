@@ -9,27 +9,13 @@ use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
+    // Registro público desativado: criação de usuários agora é feita via /api/users
+    // por usuários autenticados com role admin ou master.
     public function register(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6|confirmed',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
-        }
-
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-        ]);
-
-    $token = auth('api')->login($user);
-
-        return $this->respondWithToken($token);
+        return response()->json([
+            'message' => 'Registro público desativado. Use /api/users com usuário admin ou master.'
+        ], 403);
     }
 
     public function login(Request $request)

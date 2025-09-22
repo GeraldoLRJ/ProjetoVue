@@ -15,13 +15,30 @@ use Illuminate\Support\Facades\Route;
 */
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\TaskController;
+use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\UserAdminController;
 
-Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 
 Route::group(['middleware' => ['auth:api']], function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('refresh', [AuthController::class, 'refresh']);
     Route::get('me', [AuthController::class, 'me']);
+
+    // Tasks CRUD
+    Route::apiResource('tasks', TaskController::class);
+
+    // User management (apenas admin/master; admin escopo no próprio tenant)
+    Route::group(['middleware' => ['role:admin,master']], function () {
+        Route::apiResource('users', UserAdminController::class)->parameters([
+            'users' => 'user'
+        ]);
+    });
+});
+
+// Companies CRUD (somente master)
+Route::group(['middleware' => ['auth:api','role:master']], function () {
+    Route::apiResource('companies', CompanyController::class);
 });
 

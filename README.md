@@ -83,6 +83,66 @@ Observações
 - Para instalar pacotes Composer:
   docker compose run --rm composer require vendor/pacote
 
+APIs principais (backend)
+
+- Auth (JWT):
+	- POST /api/register
+	- POST /api/login
+	- POST /api/logout (auth)
+	- POST /api/refresh (auth)
+	- GET /api/me (auth)
+
+- Tasks (auth): CRUD multi-tenant (usuários veem tarefas do seu tenant; master vê todas)
+	- GET/POST /api/tasks
+	- GET/PUT/DELETE /api/tasks/{id}
+
+- Companies (auth + role: master): CRUD de empresas
+	- GET/POST /api/companies
+	- GET/PUT/DELETE /api/companies/{id}
+
+- Users (auth): gestão de usuários por papel
+	- GET /api/users — master: lista todos; admin: apenas usuários do próprio tenant
+	- POST /api/users — master: cria em qualquer tenant (tenant_id obrigatório); admin: cria apenas no próprio tenant (não pode criar master)
+	- GET /api/users/{id} — master: qualquer; admin: apenas do próprio tenant
+	- PUT /api/users/{id} — master: pode alterar nome/email/role (não mudar tenant); admin: não pode promover a master
+	- DELETE /api/users/{id} — master: qualquer não-master; admin: apenas do próprio tenant e não-master
+
+Notas:
+- A unicidade de e-mail é por tenant: (tenant_id, email) é único.
+- O papel master é global e não pode ser criado/alterado por admins.
+
+Teste rápido via curl
+
+1) Login com usuário master (semente):
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/login \
+	-H 'Content-Type: application/json' \
+	-d '{"email":"master@local.test","password":"master123"}')
+TOKEN=$(echo "$TOKEN" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+```
+
+2) Listar users (master):
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/users | jq
+```
+
+3) Criar usuário (master):
+
+```bash
+curl -s -X POST http://localhost:8080/api/users \
+	-H "Authorization: Bearer $TOKEN" \
+	-H 'Content-Type: application/json' \
+	-d '{
+		"name":"Admin Foo",
+		"email":"admin@foo.test",
+		"password":"secret123",
+		"role":"admin",
+		"tenant_id":1
+	}' | jq
+```
+
 Solução de problemas
 - Erro ao criar usuário/grupo no build (PUID/PGID vazios): o Dockerfile já tem defaults e não falha sem variáveis. Se precisar rebuildar:
 	docker compose build app artisan

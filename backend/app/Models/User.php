@@ -13,6 +13,10 @@ class User extends Authenticatable implements JWTSubject
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public const ROLE_MASTER = 'master';
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_USER = 'user';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -22,6 +26,8 @@ class User extends Authenticatable implements JWTSubject
         'name',
         'email',
         'password',
+        'role',
+        'tenant_id',
     ];
 
     /**
@@ -42,6 +48,16 @@ class User extends Authenticatable implements JWTSubject
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class, 'tenant_id');
+    }
+
+    public function tasks()
+    {
+        return $this->hasMany(Task::class);
+    }
 
     /**
      * Get the identifier that will be stored in the subject claim of the JWT.
