@@ -83,6 +83,36 @@ Observações
 - Para instalar pacotes Composer:
   docker compose run --rm composer require vendor/pacote
 
+Frontend (Vue 2) no Docker
+
+- Serviço: `frontend` (Node 18 + vue-cli-service)
+- Porta: http://localhost:${FRONTEND_PORT:-8081}
+- API base (frontend): `VUE_APP_API_BASE=http://localhost:${HTTP_PORT:-8080}/api`
+
+Como subir tudo (backend + frontend):
+
+```bash
+docker compose up -d --build web app db redis frontend
+```
+
+Primeiro acesso:
+
+- Frontend: http://localhost:8081
+- Backend API: http://localhost:8080/api
+
+Login de teste (seed):
+
+- E-mail: master@local.test
+- Senha: master123
+
+Recarga ao vivo:
+
+- O volume anônimo `/app/node_modules` evita que o bind mount sobrescreva as dependências. Mudanças em `frontend/` refletem no container (CHOKIDAR_USEPOLLING=true).
+
+Problemas comuns:
+
+- `vue-cli-service: not found`: normalmente acontece quando `node_modules` foi mascarado pelo bind. O compose já mapeia `/app/node_modules`. Rode `docker compose up -d --build frontend` para corrigir.
+
 APIs principais (backend)
 
 - Auth (JWT):
