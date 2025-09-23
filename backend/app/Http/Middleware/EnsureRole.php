@@ -19,7 +19,6 @@ class EnsureRole
             throw new AccessDeniedHttpException('Unauthenticated');
         }
 
-        // Suporta sintaxe role:admin,master e também role:admin, role:master (parâmetros variádicos)
         $allowed = [];
         foreach ($roles as $arg) {
             foreach (explode(',', (string)$arg) as $piece) {

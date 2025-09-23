@@ -10,6 +10,24 @@
           <small> | slug: {{ c.slug || '-' }}</small>
         </li>
       </ul>
+      <div class="actions">
+        <button @click="startCreate">Nova empresa</button>
+      </div>
+
+      <div v-if="showForm" class="form-card">
+        <h3>{{ editMode ? 'Editar empresa' : 'Criar empresa' }}</h3>
+        <form @submit.prevent="submit">
+          <label>Nome</label>
+          <input v-model="form.name" required />
+          <label>Slug</label>
+          <input v-model="form.slug" />
+          <div class="form-actions">
+            <button type="submit" :disabled="saving">{{ saving ? 'Salvando...' : 'Salvar' }}</button>
+            <button type="button" @click="cancel">Cancelar</button>
+          </div>
+          <p v-if="formError" class="error">{{ formError }}</p>
+        </form>
+      </div>
     </div>
   </div>
 </template>
@@ -19,7 +37,7 @@ import api from '../api';
 import store from '../store';
 
 export default {
-  data: () => ({ companies: [], loading: true }),
+  data: () => ({ companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null }),
   computed: {
     isMaster() { return store.state.user && store.state.user.role === 'master'; }
   },
@@ -35,6 +53,46 @@ export default {
         this.companies = Array.isArray(data.data) ? data.data : data;
       } finally {
         this.loading = false;
+      }
+    },
+    startCreate() {
+      this.form = { name: '', slug: '' };
+      this.editMode = false;
+      this.formError = null;
+      this.showForm = true;
+    },
+    startEdit(c) {
+      this.form = { id: c.id, name: c.name, slug: c.slug };
+      this.editMode = true;
+      this.formError = null;
+      this.showForm = true;
+    },
+    cancel() { this.showForm = false; this.form = {}; },
+    async submit() {
+      this.saving = true; this.formError = null;
+      try {
+        if (this.editMode) {
+          const { data } = await api.put(`/companies/${this.form.id}`, { name: this.form.name, slug: this.form.slug });
+          const idx = this.companies.findIndex(x => x.id === data.id);
+          if (idx !== -1) this.$set(this.companies, idx, data);
+        } else {
+          const { data } = await api.post('/companies', { name: this.form.name, slug: this.form.slug });
+          this.companies.unshift(data);
+        }
+        this.cancel();
+      } catch (e) {
+        this.formError = (e.response && e.response.data && (e.response.data.message || e.response.data.error)) || 'Erro';
+      } finally {
+        this.saving = false;
+      }
+    },
+    async confirmDelete(c) {
+      if (!confirm(`Apagar empresa #${c.id} ${c.name}?`)) return;
+      try {
+        await api.delete(`/companies/${c.id}`);
+        this.companies = this.companies.filter(x => x.id !== c.id);
+      } catch (e) {
+        alert((e.response && e.response.data && e.response.data.message) || 'Erro ao apagar');
       }
     }
   }

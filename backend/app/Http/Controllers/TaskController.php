@@ -22,7 +22,6 @@ class TaskController extends Controller
         if ($user->role !== $user::ROLE_MASTER) {
             $query->where('tenant_id', $user->tenant_id);
         }
-        // filtros simples opcionais
         if ($status = $request->query('status')) {
             $query->where('status', $status);
         }
@@ -37,14 +36,11 @@ class TaskController extends Controller
         $user = auth('api')->user();
         $data = $request->validated();
 
-        // Forçar isolamento por tenant
         if ($user->role === $user::ROLE_MASTER && !empty($data['tenant_id'])) {
-            // master pode criar em qualquer tenant informado
         } else {
             $data['tenant_id'] = $user->tenant_id;
         }
 
-        // Atribuir user_id default ao criador se não vier
         $data['user_id'] = $data['user_id'] ?? $user->id;
 
         $task = Task::create($data);
@@ -59,7 +55,6 @@ class TaskController extends Controller
     public function update(TaskUpdateRequest $request, Task $task)
     {
         $data = $request->validated();
-        // Não permitir trocar de tenant via update
         unset($data['tenant_id']);
         unset($data['user_id']);
         $task->update($data);

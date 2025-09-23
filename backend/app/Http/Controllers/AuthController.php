@@ -9,8 +9,6 @@ use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
-    // Registro público desativado: criação de usuários agora é feita via /api/users
-    // por usuários autenticados com role admin ou master.
     public function register(Request $request)
     {
         return response()->json([

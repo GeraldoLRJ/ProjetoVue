@@ -9,7 +9,7 @@ class TaskPolicy
 {
     public function viewAny(User $user): bool
     {
-        return true; // Apenas autenticado (já garantido pelo middleware)
+        return true;
     }
 
     public function view(User $user, Task $task): bool
@@ -19,7 +19,7 @@ class TaskPolicy
 
     public function create(User $user): bool
     {
-        return true; // autenticado pode criar no seu tenant (ou master em qualquer)
+        return true;
     }
 
     public function update(User $user, Task $task): bool

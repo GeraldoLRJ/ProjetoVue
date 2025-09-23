@@ -21,7 +21,8 @@ class UserAdminController extends Controller
         $user = auth('api')->user();
         $q = User::query()->with('company');
         if ($user->role !== User::ROLE_MASTER) {
-            $q->where('tenant_id', $user->tenant_id);
+            $q->where('tenant_id', $user->tenant_id)
+              ->where('role', '!=', User::ROLE_MASTER);
         }
         return $q->orderBy('id','desc')->paginate(20);
     }
@@ -42,19 +43,16 @@ class UserAdminController extends Controller
 
         // Definir tenant de destino
         if ($authUser->role === User::ROLE_MASTER) {
-            // master pode escolher tenant_id; se não vier, erro
             if (empty($data['tenant_id'])) {
                 return response()->json(['message' => 'tenant_id é obrigatório para master'], 422);
             }
         } else {
-            // admin só cria no próprio tenant e não pode elevar a master
             $data['tenant_id'] = $authUser->tenant_id;
             if (($data['role'] ?? User::ROLE_USER) === User::ROLE_MASTER) {
                 return response()->json(['message' => 'admin não pode criar usuário master'], 403);
             }
         }
 
-        // Garantir unicidade por (tenant_id,email)
         $exists = User::where('tenant_id', $data['tenant_id'])
             ->where('email', $data['email'])
             ->exists();
@@ -77,8 +75,10 @@ class UserAdminController extends Controller
     public function show(User $user)
     {
         $authUser = auth('api')->user();
-        if ($authUser->role !== User::ROLE_MASTER && $user->tenant_id !== $authUser->tenant_id) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($authUser->role !== User::ROLE_MASTER) {
+            if ($user->role === User::ROLE_MASTER || $user->tenant_id !== $authUser->tenant_id) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
         }
         $user->load('company');
         return $user;
@@ -88,8 +88,10 @@ class UserAdminController extends Controller
     public function update(Request $request, User $user)
     {
         $authUser = auth('api')->user();
-        if ($authUser->role !== User::ROLE_MASTER && $user->tenant_id !== $authUser->tenant_id) {
-            return response()->json(['message' => 'Forbidden'], 403);
+        if ($authUser->role !== User::ROLE_MASTER) {
+            if ($user->role === User::ROLE_MASTER || $user->tenant_id !== $authUser->tenant_id) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
         }
 
         $rules = [
@@ -100,7 +102,6 @@ class UserAdminController extends Controller
         ];
         $data = $request->validate($rules);
 
-        // Não permitir mudar tenant via update; controle de role restrito
         if ($authUser->role !== User::ROLE_MASTER && ($data['role'] ?? null) === User::ROLE_MASTER) {
             return response()->json(['message' => 'admin não pode promover a master'], 403);
         }
@@ -131,7 +132,6 @@ class UserAdminController extends Controller
         if ($authUser->role !== User::ROLE_MASTER && $user->tenant_id !== $authUser->tenant_id) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
-        // Não permitir deletar o próprio master atual (proteção básica)
         if ($user->role === User::ROLE_MASTER) {
             return response()->json(['message' => 'Não é permitido excluir usuário master'], 403);
         }
