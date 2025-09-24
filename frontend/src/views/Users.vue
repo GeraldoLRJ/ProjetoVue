@@ -13,7 +13,7 @@
           <div class="row">
             <div>
               <strong>#{{ u.id }} {{ u.name }}</strong>
-              <small> | {{ u.email }} | role: {{ u.role }} | tenant: {{ u.tenant_id }}</small>
+              <small> | {{ u.email }} | role: {{ u.role }} | tenant: {{ lookupCompanyLabel(u.tenant_id) }}</small>
             </div>
             <div class="row-actions">
               <button @click="startEdit(u)" :disabled="u.role === 'master'">Editar</button>
@@ -32,13 +32,20 @@
           <input v-model="form.email" type="email" required />
           <label>Senha <small v-if="editMode">(deixe em branco para não alterar)</small></label>
           <input v-model="form.password" type="password" :required="!editMode" />
-          <label>Role</label>
-          <select v-model="form.role">
-            <option value="user">user</option>
-            <option value="admin">admin</option>
-          </select>
-          <label>Tenant ID</label>
-          <input v-model.number="form.tenant_id" type="number" />
+          <span v-if="isMaster">
+            <label>Role</label>
+            <select v-model="form.role">
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </span>
+          <span v-if="isMaster">
+            <label>Tenant</label>
+            <select v-model.number="form.tenant_id">
+              <option :value="null">-- selecione --</option>
+              <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </span>
 
           <div class="form-actions">
             <button type="submit" :disabled="saving">{{ saving ? 'Salvando...' : 'Salvar' }}</button>
@@ -56,16 +63,21 @@ import api from '../api';
 import store from '../store';
 
 export default {
-  data: () => ({ users: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null }),
+  data: () => ({ users: [], companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null }),
   computed: {
     allowed() {
       const user = store.state.user;
       return user && (user.role === 'admin' || user.role === 'master');
+    },
+    isMaster() { 
+      const user = store.state.user;
+      return user && user.role === 'master'; 
     }
   },
   async created() {
     if (!this.allowed) return;
     await this.load();
+    if (this.isMaster) await this.loadCompanies();
   },
   methods: {
     async load() {
@@ -76,6 +88,19 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    async loadCompanies() {
+      try {
+        const { data } = await api.get('/companies');
+        this.companies = Array.isArray(data.data) ? data.data : data;
+      } catch (e) {
+        this.companies = [];
+      }
+    },
+    lookupCompanyLabel(id) {
+      if (!id) return '-';
+      const c = this.companies.find(x => x.id === id);
+      return c ? c.name : `#${id}`;
     },
     startCreate() {
       this.form = { name: '', email: '', password: '', role: 'user', tenant_id: (store.state.user && store.state.user.tenant_id) || null };

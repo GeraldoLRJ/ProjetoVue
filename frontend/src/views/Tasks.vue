@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>Tarefas</h1>
-    <div class="actions">
+    <div class="actions" v-if=canUsers()>
       <button @click="startCreate">Nova tarefa</button>
     </div>
 
@@ -12,12 +12,17 @@
           <div class="row">
             <div>
               <strong>#{{ t.id }} {{ t.title }}</strong>
-              <small> | status: {{ t.status }} | prioridade: {{ t.priority }} | vencimento: {{ t.due_date || '-' }}</small>
+              <small>
+                | status: {{ labelStatus(t.status) }}
+                | prioridade: {{ labelPriority(t.priority) }}
+                | vencimento: {{ formatDateTime(t.due_date) }}
+                <span v-if="t.user || t.user_id"> | responsável: {{ (t.user && (t.user.name + ' | ' + t.user.email)) || lookupUserLabel(t.user_id) }}</span>
+              </small>
               <div class="desc" v-if="t.description">{{ t.description }}</div>
             </div>
             <div class="row-actions">
-              <button @click="startEdit(t)">Editar</button>
-              <button @click="confirmDelete(t)">Apagar</button>
+              <button @click="startEdit(t)" v-if=canUsers()>Editar</button>
+              <button @click="confirmDelete(t)" v-if=canUsers()>Apagar</button>
             </div>
           </div>
         </li>
@@ -32,15 +37,20 @@
           <textarea v-model="form.description"></textarea>
           <label>Status</label>
           <select v-model="form.status">
-            <option value="todo">todo</option>
-            <option value="in_progress">in_progress</option>
-            <option value="done">done</option>
+            <option value="pending">pendente</option>
+            <option value="in_progress">em progresso</option>
+            <option value="done">feito</option>
           </select>
           <label>Prioridade</label>
           <select v-model="form.priority">
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
+            <option value="low">baixa</option>
+            <option value="medium">média</option>
+            <option value="high">alta</option>
+          </select>
+          <label>Responsável</label>
+          <select v-model.number="form.user_id">
+            <option :value="null">-- nenhum --</option>
+            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }} | {{ u.email }}</option>
           </select>
           <label>Vencimento</label>
           <input v-model="form.due_date" type="date" />
@@ -57,11 +67,13 @@
 
 <script>
 import api from '../api';
+import store from '../store';
+import { formatDateTime, formatDate } from '../utils/dateFormat';
 
 export default {
-  data: () => ({ tasks: [], loading: true, showForm: false, editMode: false, form: {}, saving: false }),
+  data: () => ({ tasks: [], users: [], loading: true, showForm: false, editMode: false, form: {}, saving: false }),
   async created() {
-    await this.load();
+    await Promise.all([this.load(), this.loadUsers()]);
   },
   methods: {
     async load() {
@@ -73,12 +85,28 @@ export default {
         this.loading = false;
       }
     },
+    formatDateTime,
+    labelStatus(code) {
+      const map = { pending: 'pendente', in_progress: 'em progresso', done: 'feito' };
+      return map[code] || code;
+    },
+    labelPriority(code) {
+      const map = { low: 'baixa', medium: 'média', high: 'alta' };
+      return map[code] || code;
+    },
+    lookupUserLabel(id) {
+      if (!id) return '-';
+      const u = this.users.find(x => x.id === id);
+      return u ? `${u.name} | ${u.email}` : `#${id}`;
+    },
     startCreate() {
-      this.form = { title: '', description: '', status: 'todo', priority: 'medium', due_date: null };
+      this.form = { title: '', description: '', status: 'pending', priority: 'medium', due_date: null, user_id: null };
       this.editMode = false; this.showForm = true; this.saving = false;
     },
     startEdit(task) {
-      this.form = { ...task };
+      // Ensure the date input (type="date") receives a YYYY-MM-DD string
+      const due = task && task.due_date ? formatDate(task.due_date) : null;
+      this.form = { ...task, due_date: due, user_id: task.user_id || (task.user && task.user.id) || null };
       this.editMode = true; this.showForm = true; this.saving = false;
     },
     cancel() { this.showForm = false; this.form = {}; },
@@ -90,7 +118,12 @@ export default {
           const idx = this.tasks.findIndex(t => t.id === data.id);
           if (idx !== -1) this.$set(this.tasks, idx, data);
         } else {
-          const { data } = await api.post('/tasks', this.form);
+          // When creating, ensure due_date includes time 23:59 if user provided only a date
+          const payload = { ...this.form };
+          if (payload.due_date && /^\d{4}-\d{2}-\d{2}$/.test(payload.due_date)) {
+            payload.due_date = `${payload.due_date} 23:59`;
+          }
+          const { data } = await api.post('/tasks', payload);
           this.tasks.unshift(data);
         }
         this.cancel();
@@ -109,6 +142,21 @@ export default {
         alert((e.response && e.response.data && e.response.data.message) || 'Erro ao apagar');
       }
     }
+    ,
+    async loadUsers() {
+      try {
+        const { data } = await api.get('/users');
+        const list = Array.isArray(data.data) ? data.data : data;
+        this.users = list;
+      } catch (e) {
+        // ignore or show message
+        this.users = [];
+      }
+    },
+    canUsers() {
+      const user = store.state.user;
+      return user && (user.role === 'admin' || user.role === 'master');
+    }
   }
 };
 </script>
@@ -124,4 +172,49 @@ export default {
 .form-card { background:#fff; padding:16px; border-radius:8px; margin-top:12px; }
 .form-actions { margin-top:12px; display:flex; gap:8px; }
 textarea { width:100%; min-height:80px; }
+.form-card input[type="date"] {
+  width: 180px;
+  max-width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+@media (max-width: 640px) {
+  .form-card input[type="date"] { width: 100%; }
+}
+
+/* título menor e descrição um pouco mais estreita */
+.form-card input:first-of-type {
+  width: 420px;
+  max-width: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+.form-card textarea {
+  width: 70%;
+  min-height: 80px;
+  box-sizing: border-box;
+}
+@media (max-width: 640px) {
+  .form-card input:first-of-type { width: 100%; }
+  .form-card textarea { width: 100%; }
+}
+
+/* Aumentar selects no formulário de tarefas */
+.form-card select {
+  padding: 10px 12px;
+  font-size: 15px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  min-width: 240px;
+}
+.form-card select[v-model="form.user_id"] {
+  min-width: 420px;
+}
+@media (max-width: 640px) {
+  .form-card select { min-width: 100%; width: 100%; }
+}
 </style>

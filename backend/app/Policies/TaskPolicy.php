@@ -14,7 +14,7 @@ class TaskPolicy
 
     public function view(User $user, Task $task): bool
     {
-        return $user->role === User::ROLE_MASTER || $user->tenant_id === $task->tenant_id;
+        return $user->role === User::ROLE_MASTER || $user->tenant_id === $task->tenant_id || $user->id === $task->user_id;
     }
 
     public function create(User $user): bool
@@ -24,11 +24,11 @@ class TaskPolicy
 
     public function update(User $user, Task $task): bool
     {
-        return $user->role === User::ROLE_MASTER || $user->tenant_id === $task->tenant_id;
+        return $user->role === User::ROLE_MASTER || $user->tenant_id === $task->tenant_id || $user->id === $task->user_id;
     }
 
     public function delete(User $user, Task $task): bool
     {
-        return $user->role === User::ROLE_MASTER || $user->tenant_id === $task->tenant_id;
+        return $user->role === User::ROLE_MASTER || $user->tenant_id === $task->tenant_id || $user->id === $task->user_id;
     }
 }

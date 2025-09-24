@@ -1,7 +1,7 @@
 <template>
 	<header class="topbar">
 		<div class="left">
-			<h1 class="brand">ProjetoVue</h1>
+			<h1 class="brand">Controle de Tarefas</h1>
 		</div>
 		<div class="right">
 			<template v-if="user">

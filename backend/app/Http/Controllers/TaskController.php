@@ -20,7 +20,10 @@ class TaskController extends Controller
         $user = auth('api')->user();
         $query = Task::query();
         if ($user->role !== $user::ROLE_MASTER) {
-            $query->where('tenant_id', $user->tenant_id);
+            $query->where(function ($q) use ($user) {
+                $q->where('tenant_id', $user->tenant_id)
+                  ->orWhere('user_id', $user->id);
+            });
         }
         if ($status = $request->query('status')) {
             $query->where('status', $status);

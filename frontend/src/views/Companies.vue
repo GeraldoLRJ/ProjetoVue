@@ -19,7 +19,7 @@
         <form @submit.prevent="submit">
           <label>Nome</label>
           <input v-model="form.name" required />
-          <label>Slug</label>
+          <label>Apelido</label>
           <input v-model="form.slug" />
           <div class="form-actions">
             <button type="submit" :disabled="saving">{{ saving ? 'Salvando...' : 'Salvar' }}</button>
