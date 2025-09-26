@@ -1,5 +1,4 @@
 export function downloadCsv(filename, rows, columns) {
-  // columns: [{key:'id', label:'ID'}, ...]
   const header = columns.map(c => `"${c.label.replace(/"/g,'""')}"`).join(',') + '\n';
   const lines = rows.map(row => columns.map(c => {
     const v = row[c.key] == null ? '' : String(row[c.key]);
