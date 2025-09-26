@@ -6,20 +6,36 @@
     </h1>
     <p v-if="!isMaster" class="warn">Acesso restrito a master.</p>
     <div v-else>
-      <div v-if="loading">Carregando...</div>
-      <ul v-else class="list">
-        <li v-for="c in companies" :key="c.id">
-          <strong>#{{ c.id }} {{ c.name }}</strong>
-          <small> | slug: {{ c.slug || '-' }}</small>
-        </li>
-      </ul>
       <div class="actions">
         <button @click="startCreate">Nova empresa</button>
       </div>
+      <div v-if="loading">Carregando...</div>
+      <ul v-else class="list">
+        <li v-for="c in companies" :key="c.id">
+          <div class="row">
+            <div>
+              <strong>#{{ c.id }} {{ c.name }}</strong>
+              <small> | slug: {{ c.slug || '-' }}</small>
+            </div>
+            <div class="row-actions">
+              <button v-if="isMaster" @click="startEdit(c)">Editar</button>
+              <button v-if="isMaster" @click="confirmDelete(c)">Apagar</button>
+            </div>
+          </div>
+        </li>
+      </ul>
 
-      <div v-if="showForm" class="form-card">
-        <h3>{{ editMode ? 'Editar empresa' : 'Criar empresa' }}</h3>
-        <form @submit.prevent="submit">
+      <div class="pagination">
+        <button @click="changePage(-1)" :disabled="page <= 1">« Anterior</button>
+        <span>Página {{ page }} de {{ lastPage }} ({{ total }} itens)</span>
+        <button @click="changePage(1)" :disabled="page >= lastPage">Próxima »</button>
+      </div>
+
+      <Modal :visible="showForm" @close="cancel">
+        <template #header>
+          <h3 style="margin:0">{{ editMode ? 'Editar empresa' : 'Criar empresa' }}</h3>
+        </template>
+  <form class="form-card" @submit.prevent="submit">
           <label>Nome</label>
           <input v-model="form.name" required />
           <label>Apelido</label>
@@ -30,7 +46,7 @@
           </div>
           <p v-if="formError" class="error">{{ formError }}</p>
         </form>
-      </div>
+      </Modal>
     </div>
   </div>
 </template>
@@ -39,9 +55,11 @@
 import api from '../api';
 import store from '../store';
 import { downloadCsv } from '../utils/csv';
+import Modal from '../components/Modal.vue';
 
 export default {
-  data: () => ({ companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null }),
+  components: { Modal },
+  data: () => ({ companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null, page: 1, perPage: 20, lastPage: 1, total: 0 }),
   computed: {
     isMaster() { return store.state.user && store.state.user.role === 'master'; }
   },
@@ -53,11 +71,24 @@ export default {
     async load() {
       this.loading = true;
       try {
-        const { data } = await api.get('/companies');
-        this.companies = Array.isArray(data.data) ? data.data : data;
+        const { data } = await api.get('/companies', { params: { page: this.page, per_page: this.perPage } });
+        if (data && data.data) {
+          this.companies = data.data;
+          this.page = data.current_page || this.page;
+          this.lastPage = data.last_page || 1;
+          this.total = data.total || this.companies.length;
+        } else {
+          this.companies = Array.isArray(data) ? data : [];
+          this.page = 1; this.lastPage = 1; this.total = this.companies.length;
+        }
       } finally {
         this.loading = false;
       }
+    },
+
+    changePage(delta) {
+      this.page = Math.max(1, Math.min(this.lastPage, this.page + delta));
+      this.load();
     },
     startCreate() {
       this.form = { name: '', slug: '' };
@@ -131,5 +162,18 @@ export default {
   border: 1px solid #d1d5db;
   background: #f3f4f6;
   cursor: pointer;
+}
+</style>
+
+<style>
+.form-card select {
+  padding: 12px 14px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  min-width: 320px;
+}
+.form-card select[v-model="form"] {
+  min-width: 480px;
 }
 </style>

@@ -15,13 +15,11 @@ class TaskStoreRequest extends FormRequest
     {
         return [
             'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status' => 'nullable|in:pending,in_progress,done',
-            'priority' => 'nullable|in:low,medium,high',
-            'due_date' => 'nullable|date',
-            // Apenas master pode definir tenant_id explicitamente; será validado e tratado no controller
-            'tenant_id' => 'nullable|integer|exists:companies,id',
-            'user_id' => 'nullable|integer|exists:users,id',
+            'description' => 'required|string',
+            'status' => 'required|in:pending,in_progress,done',
+            'priority' => 'required|in:low,medium,high',
+            'due_date' => 'required|date|after_or_equal:today',
+            'user_id' => 'required|integer|exists:users,id',
         ];
     }
 }

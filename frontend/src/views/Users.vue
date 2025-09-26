@@ -26,16 +26,23 @@
         </li>
       </ul>
 
-      <div v-if="showForm" class="form-card">
-        <h3>{{ editMode ? 'Editar usuário' : 'Criar usuário' }}</h3>
-        <form @submit.prevent="submit">
+      <div class="pagination">
+        <button @click="changePage(-1)" :disabled="page <= 1">« Anterior</button>
+        <span>Página {{ page }} de {{ lastPage }} ({{ total }} itens)</span>
+        <button @click="changePage(1)" :disabled="page >= lastPage">Próxima »</button>
+      </div>
+
+      <Modal :visible="showForm" @close="cancel">
+        <template #header>
+          <h3 style="margin:0">{{ editMode ? 'Editar usuário' : 'Criar usuário' }}</h3>
+        </template>
+  <form class="form-card" @submit.prevent="submit">
           <label>Nome</label>
           <input v-model="form.name" required />
           <label>E-mail</label>
           <input v-model="form.email" type="email" required />
           <label>Senha <small v-if="editMode">(deixe em branco para não alterar)</small></label>
           <input v-model="form.password" type="password" :required="!editMode" />
-          <!-- Only allow role editing when current user is master and we're NOT editing an existing master user -->
           <span v-if="isMaster && !(editMode && form.role === 'master')">
             <label>Role</label>
             <select v-model="form.role">
@@ -57,7 +64,7 @@
           </div>
           <p v-if="formError" class="error">{{ formError }}</p>
         </form>
-      </div>
+      </Modal>
     </div>
   </div>
 </template>
@@ -66,9 +73,11 @@
 import api from '../api';
 import store from '../store';
 import { downloadCsv } from '../utils/csv';
+import Modal from '../components/Modal.vue';
 
 export default {
-  data: () => ({ users: [], companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null }),
+  components: { Modal },
+  data: () => ({ users: [], companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null, page: 1, perPage: 20, lastPage: 1, total: 0 }),
   computed: {
     allowed() {
       const user = store.state.user;
@@ -88,11 +97,24 @@ export default {
     async load() {
       this.loading = true;
       try {
-        const { data } = await api.get('/users');
-        this.users = Array.isArray(data.data) ? data.data : data;
+        const { data } = await api.get('/users', { params: { page: this.page, per_page: this.perPage } });
+        if (data && data.data) {
+          this.users = data.data;
+          this.page = data.current_page || this.page;
+          this.lastPage = data.last_page || 1;
+          this.total = data.total || this.users.length;
+        } else {
+          this.users = Array.isArray(data) ? data : [];
+          this.page = 1; this.lastPage = 1; this.total = this.users.length;
+        }
       } finally {
         this.loading = false;
       }
+    },
+
+    changePage(delta) {
+      this.page = Math.max(1, Math.min(this.lastPage, this.page + delta));
+      this.load();
     },
     async loadCompanies() {
       try {
@@ -153,13 +175,11 @@ export default {
           const payload = { name: this.form.name, email: this.form.email, role: this.form.role };
           if (this.form.password) payload.password = this.form.password;
           const { data } = await api.put(`/users/${this.form.id}`, payload);
-          // update local list
           const idx = this.users.findIndex(u => u.id === data.id);
           if (idx !== -1) this.$set(this.users, idx, data);
         } else {
           const payload = { ...this.form };
           const { data } = await api.post('/users', payload);
-          // prepend new user
           this.users.unshift(data);
         }
         this.cancel();
@@ -207,5 +227,18 @@ export default {
   border: 1px solid #d1d5db;
   background: #f3f4f6;
   cursor: pointer;
+}
+</style>
+
+<style>
+.form-card select {
+  padding: 12px 14px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  min-width: 320px;
+}
+.form-card select[v-model="form.tenant_id"] {
+  min-width: 480px;
 }
 </style>

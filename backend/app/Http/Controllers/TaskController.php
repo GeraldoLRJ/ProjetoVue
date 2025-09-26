@@ -7,6 +7,7 @@ use App\Http\Requests\TaskUpdateRequest;
 use App\Models\Task;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class TaskController extends Controller
 {
@@ -21,10 +22,7 @@ class TaskController extends Controller
         $user = auth('api')->user();
         $query = Task::query();
         if ($user->role !== $user::ROLE_MASTER) {
-            $query->where(function ($q) use ($user) {
-                $q->where('tenant_id', $user->tenant_id)
-                  ->orWhere('user_id', $user->id);
-            });
+            $query->where('user_id', $user->id);
         }
         if ($status = $request->query('status')) {
             $query->where('status', $status);
@@ -32,7 +30,7 @@ class TaskController extends Controller
         if ($priority = $request->query('priority')) {
             $query->where('priority', $priority);
         }
-        return $query->orderByDesc('id')->paginate(15);
+    return $query->orderByDesc('id')->paginate(20);
     }
 
     public function store(TaskStoreRequest $request)
@@ -42,12 +40,13 @@ class TaskController extends Controller
 
         Log::info('Task created:', $request->all());
 
-        if ($user->role === $user::ROLE_MASTER && !empty($data['tenant_id'])) {
+        if (empty($data['user_id'])) {
+            $data['user_id'] = $user->id;
         } else {
-            $data['tenant_id'] = $user->tenant_id;
+            if ($user->role !== $user::ROLE_MASTER && $data['user_id'] !== $user->id) {
+                return response()->json(['message' => 'Forbidden to set user_id'], 403);
+            }
         }
-
-        $data['user_id'] = $data['user_id'] ?? $user->id;
 
         $task = Task::create($data);
         return response()->json($task, 201);
@@ -61,8 +60,14 @@ class TaskController extends Controller
     public function update(TaskUpdateRequest $request, Task $task)
     {
         $data = $request->validated();
-        unset($data['tenant_id']);
-        unset($data['user_id']);
+
+        if (isset($data['user_id'])) {
+            $authUser = auth('api')->user();
+            if ($authUser->role !== $authUser::ROLE_MASTER) {
+                unset($data['user_id']);
+            }
+        }
+
         $task->update($data);
         return $task;
     }

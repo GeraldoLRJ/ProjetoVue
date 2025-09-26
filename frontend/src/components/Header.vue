@@ -5,7 +5,9 @@
 		</div>
 		<div class="right">
 			<template v-if="user">
-				<span class="username">{{ user.name || user.email || 'Usuário' }}</span>
+				<span class="username">{{ user.name || user.email || 'Usuário' }}
+					<span v-if="user.company && user.company.name"> — {{ user.company.name }}</span>
+				</span>
 				<button class="btn" @click="logout">Sair</button>
 			</template>
 			<template v-else>
@@ -17,6 +19,7 @@
 
 <script>
 import store from '../store';
+import api from '../api';
 
 export default {
 	name: 'HeaderBar',
@@ -28,13 +31,26 @@ export default {
 	computed: {
 		user() {
 			return this.storeState.user;
+		},
+		companyName() {
+			const u = this.user;
+			if (!u || u.company === undefined || u.company === null) return null;
+			// backend may return company as a string or as an object with name
+			if (typeof u.company === 'string') return u.company;
+			return u.company.name || null;
 		}
 	},
 	methods: {
-		logout() {
-			store.clearAuth();
-			// redirect to login page
-			this.$router.push('/login');
+		async logout() {
+			// try to notify server to invalidate the token, but remove token locally regardless
+			try {
+				await api.post('/logout');
+			} catch (e) {
+				// ignore errors (we still want to clear local token)
+			} finally {
+				store.clearAuth();
+				this.$router.push('/login');
+			}
 		}
 	}
 };

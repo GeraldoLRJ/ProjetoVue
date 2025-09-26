@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -18,7 +19,6 @@ class Task extends Model
     public const PRIORITY_HIGH = 'high';
 
     protected $fillable = [
-        'tenant_id',
         'user_id',
         'title',
         'description',
@@ -28,12 +28,29 @@ class Task extends Model
     ];
 
     protected $casts = [
-        'due_date' => 'datetime',
+        'due_date' => 'datetime:Y-m-d H:i',
     ];
+
+    public function setDueDateAttribute($value)
+    {
+        if (empty($value)) {
+            $this->attributes['due_date'] = null;
+            return;
+        }
+
+        $this->attributes['due_date'] = Carbon::parse($value, 'America/Sao_Paulo')->utc();
+    }
+
+    public function getDueDateAttribute($value)
+    {
+        if (!$value) return null;
+
+        return Carbon::parse($value)->setTimezone('America/Sao_Paulo')->format('Y-m-d H:i');
+    }
 
     public function company()
     {
-        return $this->belongsTo(Company::class, 'tenant_id');
+        return null;
     }
 
     public function user()

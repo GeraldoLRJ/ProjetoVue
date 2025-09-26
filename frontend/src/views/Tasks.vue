@@ -8,8 +8,30 @@
       <button @click="startCreate">Nova tarefa</button>
     </div>
 
+    <div class="filters">
+      <div class="filter-item">
+        <label>Status</label>
+        <select v-model="filterStatus" @change="onFilterChange" class="filter-select">
+          <option value="">Todos</option>
+          <option value="pending">pendente</option>
+          <option value="in_progress">em progresso</option>
+          <option value="done">feito</option>
+        </select>
+      </div>
+
+      <div class="filter-item">
+        <label>Prioridade</label>
+        <select v-model="filterPriority" @change="onFilterChange" class="filter-select">
+          <option value="">Todas</option>
+          <option value="low">baixa</option>
+          <option value="medium">média</option>
+          <option value="high">alta</option>
+        </select>
+      </div>
+    </div>
+
     <div v-if="loading">Carregando...</div>
-    <div v-else>
+  <div v-else>
       <ul class="list">
         <li v-for="t in tasks" :key="t.id">
           <div class="row">
@@ -18,7 +40,7 @@
               <small>
                 | status: {{ labelStatus(t.status) }}
                 | prioridade: {{ labelPriority(t.priority) }}
-                | vencimento: {{ formatDateTime(t.due_date) }}
+                | vencimento: {{ t.due_date }}
                 <span v-if="t.user || t.user_id"> | responsável: {{ (t.user && (t.user.name + ' | ' + t.user.email)) || lookupUserLabel(t.user_id) }}</span>
               </small>
               <div class="desc" v-if="t.description">{{ t.description }}</div>
@@ -31,9 +53,17 @@
         </li>
       </ul>
 
-      <div v-if="showForm" class="form-card">
-        <h3>{{ editMode ? 'Editar tarefa' : 'Criar tarefa' }}</h3>
-        <form @submit.prevent="submit">
+      <div class="pagination">
+        <button @click="changePage(-1)" :disabled="page <= 1">« Anterior</button>
+        <span>Página {{ page }} de {{ lastPage }} ({{ total }} itens)</span>
+        <button @click="changePage(1)" :disabled="page >= lastPage">Próxima »</button>
+      </div>
+
+      <Modal :visible="showForm" @close="cancel">
+        <template #header>
+          <h3 style="margin:0">{{ editMode ? 'Editar tarefa' : 'Criar tarefa' }}</h3>
+        </template>
+  <form class="form-card" @submit.prevent="submit">
           <label>Título</label>
           <input v-model="form.title" required />
           <label>Descrição</label>
@@ -58,12 +88,14 @@
           <label>Vencimento</label>
           <input v-model="form.due_date" type="date" />
 
-          <div class="form-actions">
+          <div class="form-actions" style="margin-top:12px;">
             <button type="submit" :disabled="saving">{{ saving ? 'Salvando...' : 'Salvar' }}</button>
             <button type="button" @click="cancel">Cancelar</button>
           </div>
         </form>
-      </div>
+        <template #footer>
+        </template>
+      </Modal>
     </div>
   </div>
 </template>
@@ -71,11 +103,13 @@
 <script>
 import api from '../api';
 import store from '../store';
-import { formatDateTime, formatDate } from '../utils/dateFormat';
+// date formatting helper removed — keep template using raw due_date or other utils
+import Modal from '../components/Modal.vue';
 import { downloadCsv } from '../utils/csv';
 
 export default {
-  data: () => ({ tasks: [], users: [], loading: true, showForm: false, editMode: false, form: {}, saving: false }),
+  data: () => ({ tasks: [], users: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, page: 1, perPage: 20, lastPage: 1, total: 0, filterStatus: '', filterPriority: '' }),
+  components: { Modal },
   async created() {
     await Promise.all([this.load(), this.loadUsers()]);
   },
@@ -83,13 +117,34 @@ export default {
     async load() {
       this.loading = true;
       try {
-        const { data } = await api.get('/tasks');
-        this.tasks = Array.isArray(data.data) ? data.data : data;
+        const params = { page: this.page, per_page: this.perPage };
+        if (this.filterStatus) params.status = this.filterStatus;
+        if (this.filterPriority) params.priority = this.filterPriority;
+        const { data } = await api.get('/tasks', { params });
+        if (data && data.data && Array.isArray(data.data)) {
+          this.tasks = data.data;
+          this.page = data.current_page || this.page;
+          this.lastPage = data.last_page || 1;
+          this.total = data.total || this.tasks.length;
+        } else {
+          this.tasks = Array.isArray(data) ? data : [];
+          this.page = 1; this.lastPage = 1; this.total = this.tasks.length;
+        }
       } finally {
         this.loading = false;
       }
     },
-    formatDateTime,
+
+    onFilterChange() {
+      this.page = 1;
+      this.load();
+    },
+
+    changePage(delta) {
+      this.page = Math.max(1, Math.min(this.lastPage, this.page + delta));
+      this.load();
+    },
+    
     labelStatus(code) {
       const map = { pending: 'pendente', in_progress: 'em progresso', done: 'feito' };
       return map[code] || code;
@@ -108,8 +163,7 @@ export default {
       this.editMode = false; this.showForm = true; this.saving = false;
     },
     startEdit(task) {
-      // Ensure the date input (type="date") receives a YYYY-MM-DD string
-      const due = task && task.due_date ? formatDate(task.due_date) : null;
+      const due = task && task.due_date ? task.due_date : null;
       this.form = { ...task, due_date: due, user_id: task.user_id || (task.user && task.user.id) || null };
       this.editMode = true; this.showForm = true; this.saving = false;
     },
@@ -122,7 +176,6 @@ export default {
           const idx = this.tasks.findIndex(t => t.id === data.id);
           if (idx !== -1) this.$set(this.tasks, idx, data);
         } else {
-          // When creating, ensure due_date includes time 23:59 if user provided only a date
           const payload = { ...this.form };
           if (payload.due_date && /^\d{4}-\d{2}-\d{2}$/.test(payload.due_date)) {
             payload.due_date = `${payload.due_date} 23:59`;
@@ -153,7 +206,6 @@ export default {
         const list = Array.isArray(data.data) ? data.data : data;
         this.users = list;
       } catch (e) {
-        // ignore or show message
         this.users = [];
       }
     },
@@ -169,7 +221,7 @@ export default {
           { key: 'due_date', label: 'Vencimento' },
           { key: 'user_id', label: 'Responsável ID' },
         ];
-        const norm = rows.map(r => ({ ...r, due_date: formatDateTime(r.due_date) }));
+  const norm = rows.map(r => ({ ...r, due_date: r.due_date }));
         downloadCsv('tasks.csv', norm, cols);
       } catch (e) {
         alert('Erro ao exportar');
@@ -206,7 +258,6 @@ textarea { width:100%; min-height:80px; }
   .form-card input[type="date"] { width: 100%; }
 }
 
-/* título menor e descrição um pouco mais estreita */
 .form-card input:first-of-type {
   width: 420px;
   max-width: 100%;
@@ -225,18 +276,23 @@ textarea { width:100%; min-height:80px; }
   .form-card textarea { width: 100%; }
 }
 
-/* Aumentar selects no formulário de tarefas */
 .form-card select {
-  padding: 10px 12px;
-  font-size: 15px;
-  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 16px;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
-  min-width: 240px;
+  min-width: 320px;
 }
 .form-card select[v-model="form.user_id"] {
-  min-width: 420px;
+  min-width: 480px;
 }
 @media (max-width: 640px) {
   .form-card select { min-width: 100%; width: 100%; }
 }
+
+.filters { display:flex; gap:12px; align-items:flex-end; margin:12px 0; }
+.filter-item label { display:block; margin-bottom:6px; color:#374151; }
+.filter-select { padding: 12px 14px; font-size:16px; border-radius:8px; border:1px solid #e5e7eb; min-width:220px; }
+@media (max-width:640px) { .filters { flex-direction:column; } .filter-select { min-width:100%; } }
+
 </style>
