@@ -103,7 +103,7 @@ class UserAdminController extends Controller
         $data = $request->validate($rules);
 
         if ($authUser->role !== User::ROLE_MASTER && ($data['role'] ?? null) === User::ROLE_MASTER) {
-            return response()->json(['message' => 'admin não pode promover a master'], 403);
+            return response()->json(['message' => 'admin não pode promover a master ou alterar o usuário master'], 401);
         }
 
         if (isset($data['email'])) {

@@ -17,7 +17,7 @@ import api from '../api';
 import store from '../store';
 
 export default {
-  data: () => ({ email: 'master@local.test', password: 'master123', loading: false, error: null }),
+  data: () => ({ email: 'master@local.test', password: 'secret123', loading: false, error: null }),
   methods: {
     async submit() {
       this.loading = true; this.error = null;

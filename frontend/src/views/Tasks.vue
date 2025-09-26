@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1>Tarefas</h1>
+    <h1>
+      Tarefas
+      <button class="export-btn" @click="exportCsv" title="Exportar CSV">📥</button>
+    </h1>
     <div class="actions" v-if=canUsers()>
       <button @click="startCreate">Nova tarefa</button>
     </div>
@@ -69,6 +72,7 @@
 import api from '../api';
 import store from '../store';
 import { formatDateTime, formatDate } from '../utils/dateFormat';
+import { downloadCsv } from '../utils/csv';
 
 export default {
   data: () => ({ tasks: [], users: [], loading: true, showForm: false, editMode: false, form: {}, saving: false }),
@@ -151,6 +155,24 @@ export default {
       } catch (e) {
         // ignore or show message
         this.users = [];
+      }
+    },
+    async exportCsv() {
+      try {
+        const { data } = await api.get('/tasks');
+        const rows = Array.isArray(data.data) ? data.data : data;
+        const cols = [
+          { key: 'id', label: 'ID' },
+          { key: 'title', label: 'Título' },
+          { key: 'status', label: 'Status' },
+          { key: 'priority', label: 'Prioridade' },
+          { key: 'due_date', label: 'Vencimento' },
+          { key: 'user_id', label: 'Responsável ID' },
+        ];
+        const norm = rows.map(r => ({ ...r, due_date: formatDateTime(r.due_date) }));
+        downloadCsv('tasks.csv', norm, cols);
+      } catch (e) {
+        alert('Erro ao exportar');
       }
     },
     canUsers() {

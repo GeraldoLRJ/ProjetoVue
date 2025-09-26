@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1>Usuários</h1>
+    <h1>
+      Usuários
+      <button class="export-btn" @click="exportCsv" title="Exportar CSV">📥</button>
+    </h1>
     <p v-if="!allowed" class="warn">Acesso restrito a admin/master.</p>
     <div v-else>
       <div class="actions">
@@ -16,7 +19,7 @@
               <small> | {{ u.email }} | role: {{ u.role }} | tenant: {{ lookupCompanyLabel(u.tenant_id) }}</small>
             </div>
             <div class="row-actions">
-              <button @click="startEdit(u)" :disabled="u.role === 'master'">Editar</button>
+              <button @click="startEdit(u)">Editar</button>
               <button @click="confirmDelete(u)" :disabled="u.role === 'master'">Apagar</button>
             </div>
           </div>
@@ -32,14 +35,15 @@
           <input v-model="form.email" type="email" required />
           <label>Senha <small v-if="editMode">(deixe em branco para não alterar)</small></label>
           <input v-model="form.password" type="password" :required="!editMode" />
-          <span v-if="isMaster">
+          <!-- Only allow role editing when current user is master and we're NOT editing an existing master user -->
+          <span v-if="isMaster && !(editMode && form.role === 'master')">
             <label>Role</label>
             <select v-model="form.role">
               <option value="user">user</option>
               <option value="admin">admin</option>
             </select>
           </span>
-          <span v-if="isMaster">
+          <span v-if="isMaster && !(editMode && form.role === 'master')">
             <label>Tenant</label>
             <select v-model.number="form.tenant_id">
               <option :value="null">-- selecione --</option>
@@ -61,6 +65,7 @@
 <script>
 import api from '../api';
 import store from '../store';
+import { downloadCsv } from '../utils/csv';
 
 export default {
   data: () => ({ users: [], companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null }),
@@ -95,6 +100,29 @@ export default {
         this.companies = Array.isArray(data.data) ? data.data : data;
       } catch (e) {
         this.companies = [];
+      }
+    },
+    async exportCsv() {
+      try {
+        const { data } = await api.get('/users');
+        const rows = Array.isArray(data.data) ? data.data : data;
+        if (this.companies.length === 0 && this.isMaster) {
+          await this.loadCompanies();
+        }
+        const cols = [
+          { key: 'id', label: 'ID' },
+          { key: 'name', label: 'Nome' },
+          { key: 'email', label: 'E-mail' },
+          { key: 'role', label: 'Role' },
+          { key: 'tenant', label: 'Tenant' },
+        ];
+        const norm = rows.map(r => ({
+          ...r,
+          tenant: (this.companies.find(c => c.id === r.tenant_id) || { name: (r.tenant_id ? `#${r.tenant_id}` : '-') }).name
+        }));
+        downloadCsv('users.csv', norm, cols);
+      } catch (e) {
+        alert('Erro ao exportar usuários');
       }
     },
     lookupCompanyLabel(id) {
@@ -171,4 +199,13 @@ export default {
 }
 .row-actions button[disabled] { opacity:0.6; cursor:not-allowed; }
 .actions button { padding:8px 10px; }
+.export-btn {
+  margin-left:12px;
+  padding:6px 8px;
+  font-size:14px;
+  border-radius:6px;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  cursor: pointer;
+}
 </style>

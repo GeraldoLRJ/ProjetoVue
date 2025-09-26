@@ -6,6 +6,7 @@ use App\Http\Requests\TaskStoreRequest;
 use App\Http\Requests\TaskUpdateRequest;
 use App\Models\Task;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class TaskController extends Controller
 {
@@ -38,6 +39,8 @@ class TaskController extends Controller
     {
         $user = auth('api')->user();
         $data = $request->validated();
+
+        Log::info('Task created:', $request->all());
 
         if ($user->role === $user::ROLE_MASTER && !empty($data['tenant_id'])) {
         } else {

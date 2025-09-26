@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1>Empresas</h1>
+    <h1>
+      Empresas
+      <button class="export-btn" @click="exportCsv" title="Exportar CSV">📥</button>
+    </h1>
     <p v-if="!isMaster" class="warn">Acesso restrito a master.</p>
     <div v-else>
       <div v-if="loading">Carregando...</div>
@@ -35,6 +38,7 @@
 <script>
 import api from '../api';
 import store from '../store';
+import { downloadCsv } from '../utils/csv';
 
 export default {
   data: () => ({ companies: [], loading: true, showForm: false, editMode: false, form: {}, saving: false, formError: null }),
@@ -95,6 +99,22 @@ export default {
         alert((e.response && e.response.data && e.response.data.message) || 'Erro ao apagar');
       }
     }
+    ,
+    async exportCsv() {
+      try {
+        const { data } = await api.get('/companies');
+        const rows = Array.isArray(data.data) ? data.data : data;
+        const cols = [
+          { key: 'id', label: 'ID' },
+          { key: 'name', label: 'Nome' },
+          { key: 'email', label: 'E-mail' },
+          { key: 'phone', label: 'Telefone' },
+        ];
+        downloadCsv('companies.csv', rows, cols);
+      } catch (e) {
+        alert('Erro ao exportar empresas');
+      }
+    }
   }
 };
 </script>
@@ -103,4 +123,13 @@ export default {
 .warn { color:#92400e; background:#fef3c7; padding:8px; border-radius:6px; }
 .list { padding:0; list-style:none; }
 .list li { background:#fff; margin:8px 0; padding:8px; border-radius:6px; }
+.export-btn {
+  margin-left:12px;
+  padding:6px 8px;
+  font-size:14px;
+  border-radius:6px;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  cursor: pointer;
+}
 </style>
