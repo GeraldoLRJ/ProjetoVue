@@ -15,7 +15,6 @@ class UserAdminController extends Controller
         $this->middleware('auth:api');
     }
 
-    // Listar usuários (master: todos; admin: do próprio tenant)
     public function index(Request $request)
     {
         $user = auth('api')->user();
@@ -27,7 +26,6 @@ class UserAdminController extends Controller
         return $q->orderBy('id','desc')->paginate(20);
     }
 
-    // Criar usuário
     public function store(Request $request)
     {
         $authUser = auth('api')->user();
@@ -41,7 +39,6 @@ class UserAdminController extends Controller
         ];
         $data = $request->validate($rules);
 
-        // Definir tenant de destino
         if ($authUser->role === User::ROLE_MASTER) {
             if (empty($data['tenant_id'])) {
                 return response()->json(['message' => 'tenant_id é obrigatório para master'], 422);
@@ -71,7 +68,6 @@ class UserAdminController extends Controller
         return response()->json($user, 201);
     }
 
-    // Mostrar um usuário (escopo por tenant)
     public function show(User $user)
     {
         $authUser = auth('api')->user();
@@ -84,7 +80,6 @@ class UserAdminController extends Controller
         return $user;
     }
 
-    // Atualizar usuário
     public function update(Request $request, User $user)
     {
         $authUser = auth('api')->user();

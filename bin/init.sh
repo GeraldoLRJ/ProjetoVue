@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 
-# Create Laravel 8 project in ./backend using composer container
+# Cria projeto Laravel 8 em ./backend usando o contêiner composer
 if [ "${FORCE_INIT:-0}" = "1" ]; then
   echo "FORCE_INIT=1 detectado. Removendo conteúdo de ./backend e reinstalando Laravel 8..."
   rm -rf "$BACKEND_DIR"/* "$BACKEND_DIR"/.[!.]* "$BACKEND_DIR"/..?* 2>/dev/null || true
@@ -22,7 +22,7 @@ else
   docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer update --no-interaction
 fi
 
-# Copy Laravel .env template customized for Docker
+# Copia o template .env do Laravel personalizado para Docker
 if [ -f "$ROOT_DIR/backend/.env" ]; then
   echo ".env já existe. Mantendo arquivo atual."
 else
@@ -30,7 +30,7 @@ else
   cp "$ROOT_DIR/docker/laravel/env.laravel" "$ROOT_DIR/backend/.env"
 fi
 
-# Set directory permissions for storage and bootstrap/cache
+# Ajusta permissões e proprietário para storage e bootstrap/cache
 echo "Ajustando permissões e proprietário..."
 chmod -R ug+rwX "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" || true
 find "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" -type d -exec chmod 775 {} + || true
@@ -45,7 +45,7 @@ docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan key:generate
 echo "Gerando JWT_SECRET (jwt:secret)..."
 docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan jwt:secret --force || true
 
-# Optionally run migrations and seeders
+# Opcionalmente execute migrações e seeders
 if [ "${RUN_DB_MIGRATIONS:-0}" = "1" ]; then
   echo "Subindo serviços de banco (db, redis) para migrações..."
   docker compose -f "$ROOT_DIR/docker-compose.yml" up -d db redis

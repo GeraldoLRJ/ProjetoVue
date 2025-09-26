@@ -103,7 +103,6 @@
 <script>
 import api from '../api';
 import store from '../store';
-// date formatting helper removed — keep template using raw due_date or other utils
 import Modal from '../components/Modal.vue';
 import { downloadCsv } from '../utils/csv';
 

@@ -2,7 +2,7 @@
 backend/vendor/
 composer.lock
 
-# Node (se usar mix/vite)
+# Node
 backend/node_modules/
 
 # Laravel
@@ -21,7 +21,7 @@ redis_data/
 composer-cache/
 .env
 
-# OS/editor
+# OS
 .DS_Store
 *.swp
 *.swo

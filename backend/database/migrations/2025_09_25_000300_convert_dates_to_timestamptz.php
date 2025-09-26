@@ -33,14 +33,12 @@ return new class extends Migration {
             return;
         }
 
-        // Revert created_at/updated_at to timestamp (without time zone) assuming timestamptz values are UTC
         $tables = ['tasks', 'users', 'companies'];
         foreach ($tables as $t) {
             DB::statement("ALTER TABLE {$t} ALTER COLUMN updated_at TYPE timestamp USING (updated_at AT TIME ZONE 'UTC')");
             DB::statement("ALTER TABLE {$t} ALTER COLUMN created_at TYPE timestamp USING (created_at AT TIME ZONE 'UTC')");
         }
 
-        // Revert tasks.due_date timestamptz -> date (keep local date in America/Sao_Paulo)
         DB::statement('ALTER TABLE tasks ADD COLUMN due_date_old date NULL');
         DB::statement("UPDATE tasks SET due_date_old = (due_date AT TIME ZONE 'America/Sao_Paulo')::date WHERE due_date IS NOT NULL");
         DB::statement('ALTER TABLE tasks DROP COLUMN due_date');

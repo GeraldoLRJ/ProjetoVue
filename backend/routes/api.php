@@ -26,10 +26,8 @@ Route::group(['middleware' => ['auth:api']], function () {
     Route::post('refresh', [AuthController::class, 'refresh']);
     Route::get('me', [AuthController::class, 'me']);
 
-    // Tasks CRUD
     Route::apiResource('tasks', TaskController::class);
 
-    // User management (apenas admin/master; admin escopo no próprio tenant)
     Route::group(['middleware' => ['role:admin,master']], function () {
         Route::apiResource('users', UserAdminController::class)->parameters([
             'users' => 'user'
