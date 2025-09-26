@@ -21,8 +21,23 @@ class TaskController extends Controller
     {
         $user = auth('api')->user();
         $query = Task::query();
+        // master sees everything
         if ($user->role !== $user::ROLE_MASTER) {
-            $query->where('user_id', $user->id);
+            // admin sees tasks owned by users in the same company (tenant),
+            // but tasks owned by master users must be excluded
+            if ($user->role === $user::ROLE_ADMIN) {
+                $query->whereHas('user', function($q) use ($user) {
+                    $q->where('tenant_id', $user->tenant_id)
+                      ->where('role', '!=', $user::ROLE_MASTER);
+                });
+            } else {
+                // regular users see only their own tasks
+                $query->where('user_id', $user->id);
+            }
+            // For non-master viewers, always exclude tasks whose owner is a master user
+            $query->whereDoesntHave('user', function($q) use ($user) {
+                $q->where('role', $user::ROLE_MASTER);
+            });
         }
         if ($status = $request->query('status')) {
             $query->where('status', $status);
