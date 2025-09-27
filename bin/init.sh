@@ -10,99 +10,163 @@ HOST_USER="${SUDO_USER:-$(id -un)}"
 HOST_UID="$(id -u "$HOST_USER")"
 HOST_GID="$(id -g "$HOST_USER")"
 
-# Criação / detecção do projeto Laravel 8 em ./backend
-if [ "${FORCE_INIT:-0}" = "1" ]; then
-  echo "FORCE_INIT=1 detectado. Removendo conteúdo de ./backend e reinstalando Laravel 8..."
-  rm -rf "$BACKEND_DIR"/* "$BACKEND_DIR"/.[!.]* "$BACKEND_DIR"/..?* 2>/dev/null || true
-fi
+# Verificação inicial: acesso ao daemon Docker sem sudo
+if ! docker info >/dev/null 2>&1; then
+  echo "[ERRO] Não foi possível acessar o daemon Docker como o usuário '$HOST_USER'."
+  echo "Causa comum: usuário não faz parte do grupo 'docker'."
+  echo
+  #!/usr/bin/env bash
+  # -----------------------------------------------------------------------------
+  # init.sh (reinventado)
+  # Inicializa/repara o backend Laravel dentro do Docker de forma idempotente.
+  # Suporta projeto já versionado (sem need de create-project na maioria dos casos).
+  # -----------------------------------------------------------------------------
+  set -euo pipefail
 
-mkdir -p "$BACKEND_DIR"
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  BACKEND_DIR="$ROOT_DIR/backend"
+  DOCKER_COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 
-# Garante estrutura base antes de qualquer composer/artisan
-mkdir -p \
-  "$BACKEND_DIR/storage/framework" \
-  "$BACKEND_DIR/storage/framework/cache" \
-  "$BACKEND_DIR/storage/framework/sessions" \
-  "$BACKEND_DIR/storage/framework/views" \
-  "$BACKEND_DIR/storage/framework/testing" \
-  "$BACKEND_DIR/storage/logs" \
-  "$BACKEND_DIR/bootstrap/cache"
-touch "$BACKEND_DIR/storage/logs/laravel.log" || true
+  # Vars de controle (compat + novas)
+  FORCE_INIT="${FORCE_INIT:-0}"            # wipe e recria skeleton (se realmente quiser)
+  RUN_DB_MIGRATIONS="${RUN_DB_MIGRATIONS:-0}"
+  RUN_DB_SEEDERS="${RUN_DB_SEEDERS:-0}"
+  QUIET="${QUIET:-0}"
+  PRESERVE_ENV="${PRESERVE_ENV:-1}"          # ao forçar recriação preserva .env (default: sim)
 
-ARTISAN_FILE="$BACKEND_DIR/artisan"
-COMPOSER_JSON="$BACKEND_DIR/composer.json"
+  # Detecta usuário real (evita root:root se rodado via sudo)
+  HOST_USER="${SUDO_USER:-$(id -un)}"
+  HOST_UID="$(id -u "$HOST_USER")"
+  HOST_GID="$(id -g "$HOST_USER")"
 
-if [ -f "$ARTISAN_FILE" ] || [ -f "$COMPOSER_JSON" ]; then
-  if [ "${FORCE_INIT:-0}" = "1" ]; then
-    echo "Reinstalando projeto (FORCE_INIT=1)..."
-    docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer create-project --prefer-dist laravel/laravel:^8.0 .
-  else
-    echo "Projeto Laravel já presente em ./backend (artisan ou composer.json encontrado)."
-    if [ ! -d "$BACKEND_DIR/vendor" ]; then
-      echo "Diretório vendor ausente. Executando composer install..."
-      echo "Garantindo diretórios de cache do Laravel..."
-      mkdir -p \
-        "$BACKEND_DIR/storage/framework" \
-        "$BACKEND_DIR/storage/framework/cache" \
-        "$BACKEND_DIR/storage/framework/sessions" \
-        "$BACKEND_DIR/storage/framework/views" \
-        "$BACKEND_DIR/storage/framework/testing" \
-        "$BACKEND_DIR/bootstrap/cache"
-  chmod -R ug+rwX "$BACKEND_DIR/storage" "$BACKEND_DIR/bootstrap/cache" || true
-      docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer install --no-interaction
-      docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer config platform.php 8.0.30 || true
-    else
-      echo "Dependências já instaladas (vendor existe). Pulando composer install."
+  COLOR_RESET="\033[0m"; COLOR_BLUE="\033[34m"; COLOR_GREEN="\033[32m"; COLOR_YELLOW="\033[33m"; COLOR_RED="\033[31m";
+  log() { [ "$QUIET" = "1" ] && return 0; printf "%b[init]%b %s\n" "$COLOR_BLUE" "$COLOR_RESET" "$1"; }
+  ok()  { [ "$QUIET" = "1" ] && return 0; printf "%b[ok]%b   %s\n" "$COLOR_GREEN" "$COLOR_RESET" "$1"; }
+  warn(){ [ "$QUIET" = "1" ] && return 0; printf "%b[warn]%b %s\n" "$COLOR_YELLOW" "$COLOR_RESET" "$1"; }
+  err() { printf "%b[erro]%b %s\n" "$COLOR_RED" "$COLOR_RESET" "$1" >&2; }
+
+  abort() { err "$1"; exit 1; }
+
+  require_docker() {
+    if ! docker info >/dev/null 2>&1; then
+      err "Não foi possível acessar o daemon Docker (usuário: $HOST_USER)."
+      echo "Adicione ao grupo docker e relogue:"
+      echo "  sudo usermod -aG docker $HOST_USER"
+      echo "Depois: docker ps"
+      exit 1
     fi
-  fi
-else
-  # Projeto não existe: criar via create-project
-  echo "Baixando Laravel 8 em ./backend (novo projeto)..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer create-project --prefer-dist laravel/laravel:^8.0 .
-  echo "Fixando plataforma do Composer para PHP 8.0.30 e atualizando dependências..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer config platform.php 8.0.30
-  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer update --no-interaction
-fi
+  }
 
-# Copia o template .env do Laravel personalizado para Docker
-if [ -f "$ROOT_DIR/backend/.env" ]; then
-  echo ".env já existe. Mantendo arquivo atual."
-else
-  echo "Criando .env para Docker..."
-  cp "$ROOT_DIR/docker/laravel/env.laravel" "$ROOT_DIR/backend/.env"
-fi
+  wipe_backend() {
+    [ "$FORCE_INIT" = "1" ] || return 0
+    if [ -d "$BACKEND_DIR" ]; then
+      log "FORCE_INIT=1: limpando backend/* (preservar .env = $PRESERVE_ENV)";
+      local TMP_ENV="";
+      if [ "$PRESERVE_ENV" = "1" ] && [ -f "$BACKEND_DIR/.env" ]; then
+        TMP_ENV="$(mktemp)"; cp "$BACKEND_DIR/.env" "$TMP_ENV"; fi
+      rm -rf "$BACKEND_DIR"/* "$BACKEND_DIR"/.[!.]* "$BACKEND_DIR"/..?* 2>/dev/null || true
+      [ -n "$TMP_ENV" ] && { mkdir -p "$BACKEND_DIR"; mv "$TMP_ENV" "$BACKEND_DIR/.env"; }
+    fi
+  }
 
-# Ajusta permissões e proprietário para storage e bootstrap/cache (garante antes de artisan)
-echo "Ajustando permissões e proprietário..."
-chmod -R ug+rwX "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" || true
-find "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" -type d -exec chmod 775 {} + || true
-# Se foi executado com sudo, aplica permissões ao usuário original, não root
-chown -R "$HOST_UID":"$HOST_GID" "$ROOT_DIR/backend" || true
+  ensure_structure() {
+    mkdir -p \
+      "$BACKEND_DIR" \
+      "$BACKEND_DIR/storage/framework/cache" \
+      "$BACKEND_DIR/storage/framework/sessions" \
+      "$BACKEND_DIR/storage/framework/views" \
+      "$BACKEND_DIR/storage/framework/testing" \
+      "$BACKEND_DIR/storage/logs" \
+      "$BACKEND_DIR/bootstrap/cache"
+    touch "$BACKEND_DIR/storage/logs/laravel.log" || true
+    ok "Estrutura de diretórios garantida"
+  }
 
-if [ -d "$BACKEND_DIR/vendor" ]; then
-  echo "Executando passos artisan (vendor presente)..."
-  echo "Criando link de storage -> public/storage (se necessário)..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan storage:link || true
+  composer_install_or_update() {
+    if [ ! -f "$BACKEND_DIR/composer.json" ]; then
+      log "composer.json não encontrado. (Projeto já versionado deveria conter).";
+      log "Criando novo skeleton Laravel 8...";
+      docker compose -f "$DOCKER_COMPOSE_FILE" run --rm composer create-project --prefer-dist laravel/laravel:^8.0 .
+    elif [ ! -d "$BACKEND_DIR/vendor" ]; then
+      log "Instalando dependências (composer install)...";
+      docker compose -f "$DOCKER_COMPOSE_FILE" run --rm composer install --no-interaction
+    else
+      ok "Dependências já presentes (vendor)"
+    fi
+    # Garante plataforma fixa (idempotente)
+    docker compose -f "$DOCKER_COMPOSE_FILE" run --rm composer config platform.php 8.0.30 || true
+  }
 
-  echo "Gerando key do app..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan key:generate || true
+  copy_env_if_missing() {
+    if [ -f "$BACKEND_DIR/.env" ]; then
+      ok ".env existente (preservado)"
+    else
+      log "Copiando template .env (docker/laravel/env.laravel)";
+      cp "$ROOT_DIR/docker/laravel/env.laravel" "$BACKEND_DIR/.env"
+    fi
+  }
 
-  echo "Gerando JWT_SECRET (jwt:secret)..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan jwt:secret --force || true
-else
-  echo "Dependências não instaladas (vendor ausente). Pulando comandos artisan agora. Rode novamente após install se necessário."
-fi
+  fix_permissions() {
+    chmod -R ug+rwX "$BACKEND_DIR/storage" "$BACKEND_DIR/bootstrap/cache" 2>/dev/null || true
+    find "$BACKEND_DIR/storage" "$BACKEND_DIR/bootstrap/cache" -type d -exec chmod 775 {} + 2>/dev/null || true
+    chown -R "$HOST_UID":"$HOST_GID" "$BACKEND_DIR" 2>/dev/null || true
+    ok "Permissões ajustadas (owner: $HOST_USER)"
+  }
 
-# Opcionalmente execute migrações e seeders
-if [ "${RUN_DB_MIGRATIONS:-0}" = "1" ]; then
-  echo "Subindo serviço de banco (db) para migrações..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" up -d db
-  echo "Executando migrações..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan migrate --force || true
-  if [ "${RUN_DB_SEEDERS:-0}" = "1" ]; then
-    echo "Executando seeders..."
-    docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan db:seed --force || true
-  fi
-fi
+  artisan_safe() {
+    # Só executa se vendor existir
+    [ -d "$BACKEND_DIR/vendor" ] || { warn "Pulando artisan ($1) - vendor ausente"; return 0; }
+    docker compose -f "$DOCKER_COMPOSE_FILE" run --rm artisan "$@" || true
+  }
 
-echo "Init concluído."
+  ensure_app_key() {
+    if ! grep -q '^APP_KEY=base64:' "$BACKEND_DIR/.env" 2>/dev/null; then
+      log "Gerando APP_KEY"; artisan_safe key:generate; else ok "APP_KEY já definido"; fi
+  }
+
+  ensure_jwt_secret() {
+    if ! grep -q '^JWT_SECRET=' "$BACKEND_DIR/.env" 2>/dev/null; then
+      log "Gerando JWT_SECRET"; artisan_safe jwt:secret --force; else ok "JWT_SECRET já definido"; fi
+  }
+
+  storage_link() {
+    if [ ! -L "$BACKEND_DIR/public/storage" ]; then
+      log "Criando storage:link"; artisan_safe storage:link; else ok "Link storage já existe"; fi
+  }
+
+  migrate_and_seed() {
+    [ "$RUN_DB_MIGRATIONS" = "1" ] || return 0
+    log "Subindo serviço de banco (db) para migrações"; docker compose -f "$DOCKER_COMPOSE_FILE" up -d db
+    log "Executando migrate"; artisan_safe migrate --force
+    if [ "$RUN_DB_SEEDERS" = "1" ]; then
+      log "Executando seeders"; artisan_safe db:seed --force; fi
+  }
+
+  summary() {
+    [ "$QUIET" = "1" ] && return 0
+    echo
+    echo "----------------------------------------"
+    echo " Init concluído"
+    echo "  - FORCE_INIT=$FORCE_INIT"
+    echo "  - RUN_DB_MIGRATIONS=$RUN_DB_MIGRATIONS"
+    echo "  - RUN_DB_SEEDERS=$RUN_DB_SEEDERS"
+    echo "  - PRESERVE_ENV=$PRESERVE_ENV"
+    echo "----------------------------------------"
+  }
+
+  main() {
+    require_docker
+    wipe_backend
+    ensure_structure
+    composer_install_or_update
+    copy_env_if_missing
+    fix_permissions
+    storage_link
+    ensure_app_key
+    ensure_jwt_secret
+    migrate_and_seed
+    summary
+  }
+
+  main "$@"
