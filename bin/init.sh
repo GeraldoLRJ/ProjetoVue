@@ -73,7 +73,17 @@ echo "==> APP_KEY"
 grep -q '^APP_KEY=base64:' "$BACKEND_DIR/.env" || artisan key:generate || true
 
 echo "==> JWT_SECRET"
-grep -q '^JWT_SECRET=' "$BACKEND_DIR/.env" || artisan jwt:secret --force || true
+CURRENT_JWT_LINE=$(grep '^JWT_SECRET=' "$BACKEND_DIR/.env" || true)
+if [ -z "$CURRENT_JWT_LINE" ] || [ "$CURRENT_JWT_LINE" = 'JWT_SECRET=' ]; then
+  artisan jwt:secret --force || true
+  if grep -q '^JWT_SECRET=$' "$BACKEND_DIR/.env"; then
+    echo "[ALERTA] JWT_SECRET permaneceu vazio. Gere manualmente depois: docker compose exec artisan jwt:secret --force" >&2
+  else
+    echo "JWT_SECRET gerado."
+  fi
+else
+  echo "JWT_SECRET já definido."
+fi
 
 if [ "${RUN_DB_MIGRATIONS:-0}" = "1" ]; then
   echo "==> Subindo db para migrações"
