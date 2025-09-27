@@ -6,9 +6,12 @@ Componentes
 - PHP-FPM 8.0 (app)
 - Nginx (web)
 - Postgres 14 (db)
-- Redis 7 (redis)
+- Redis 7 (redis) (reservado para cache / futura fila)
 - Composer (container utilitário)
 - Artisan (container utilitário)
+- Worker (processamento contínuo de filas Laravel)
+- Scheduler (executa o Laravel Scheduler a cada 60s)
+- Frontend (Vue)
 
 Pré-requisitos
 - Docker e Docker Compose instalados
@@ -32,6 +35,10 @@ Passo a passo
 3) Subir os serviços:
 	docker compose up -d --build
 
+	Isso já inicia também:
+	- `worker`: executando `php artisan queue:work --queue=emails,default --tries=3 --sleep=2 --verbose`
+	- `scheduler`: loop chamando `php artisan schedule:run` a cada 60s (reservado para futuras tasks; hoje a fila não depende mais dele)
+
  3a) (Se não usou o passo 2a) Rodar as migrações/seeders manualmente:
 
 	# Forma 1 (recomendada): run cria um container efêmero do artisan
@@ -51,6 +58,9 @@ Passo a passo
 5) Rodar comandos do Artisan (exemplos):
 	docker compose run --rm artisan migrate
 	docker compose run --rm artisan tinker
+
+6) (Opcional) Ver logs de fila em tempo real:
+	docker compose logs -f worker
 
 Atalhos com Makefile (opcional)
 - make init
@@ -89,12 +99,6 @@ Frontend (Vue 2) no Docker
 - Porta: http://localhost:${FRONTEND_PORT:-8081}
 - API base (frontend): `VUE_APP_API_BASE=http://localhost:${HTTP_PORT:-8080}/api`
 
-Como subir tudo (backend + frontend):
-
-```bash
-docker compose up -d --build web app db redis frontend
-```
-
 Primeiro acesso:
 
 - Frontend: http://localhost:8081
@@ -115,6 +119,8 @@ Problemas comuns:
 
 APIs principais (backend)
 
+- Nota: O sistema utiliza uma hierarquia de papéis — master (acesso global), admin (acesso total ao próprio tenant) e user (restrito às suas próprias tarefas). O usuário master inicial é criado automaticamente na inicialização do ambiente. Essa hierarquia garante isolamento multi-tenant e controle de privilégios.
+
 - Auth (JWT):
 	- POST /api/register
 	- POST /api/login
@@ -122,7 +128,7 @@ APIs principais (backend)
 	- POST /api/refresh (auth)
 	- GET /api/me (auth)
 
-- Tasks (auth): CRUD multi-tenant (usuários veem tarefas do seu tenant; master vê todas)
+- Tasks (auth): CRUD multi-tenant (usuários veem tarefas do seu tenant; admin pode ver de todos os usuários do tenant (exceto do master); user pode ver apenas as atribpuidas ao seu usário; master vê todas)
 	- GET/POST /api/tasks
 	- GET/PUT/DELETE /api/tasks/{id}
 
@@ -131,47 +137,106 @@ APIs principais (backend)
 	- GET/PUT/DELETE /api/companies/{id}
 
 - Users (auth): gestão de usuários por papel
-	- GET /api/users — master: lista todos; admin: apenas usuários do próprio tenant
+	- GET /api/users — master: lista todos; admin: apenas usuários do próprio tenant (exceto master)
 	- POST /api/users — master: cria em qualquer tenant (tenant_id obrigatório); admin: cria apenas no próprio tenant (não pode criar master)
-	- GET /api/users/{id} — master: qualquer; admin: apenas do próprio tenant
-	- PUT /api/users/{id} — master: pode alterar nome/email/role (não mudar tenant); admin: não pode promover a master
+	- GET /api/users/{id} — master: qualquer; admin: apenas do próprio tenant e não-master
+	- PUT /api/users/{id}
+		* master: pode alterar nome, email, senha e role de admin/user. Não altera `role` de um master (nem própria) e não altera `tenant_id`.
+		* admin: não pode promover a master, nem alterar master, nem trocar tenant.
 	- DELETE /api/users/{id} — master: qualquer não-master; admin: apenas do próprio tenant e não-master
 
 Notas:
 - A unicidade de e-mail é por tenant: (tenant_id, email) é único.
 - O papel master é global e não pode ser criado/alterado por admins.
+- No arquivo backend/config/cors.php, está definido para o frontend ser reconhecido apenas na porta 8081 (para garantir que haja apenas um frontend rodando). Qualquer tentativa de chamar a API de outra origem será bloqueada pelo navegador.
+	'allowed_origins' => [
+        'http://localhost:8081',
+        'http://127.0.0.1:8081',
+    ],
 
-Teste rápido via curl
+## Fila de E-mails (Notificação de Nova Task)
 
-1) Login com usuário master (semente):
+Fluxo implementado:
+1. Ao criar uma Task (`TaskObserver`), é disparado um Job `SendTaskCreatedEmail`.
+2. O Job é colocado na fila `emails` com atraso (delay) de 1 minuto.
+3. O container `worker` roda continuamente o `queue:work` e processa quando `available_at <= agora`.
+4. O Job envia e-mail via Mailtrap usando a `Mailable` `NewTaskCreated` e registra logs em `storage/logs/laravel.log`.
+5. Retentativas: até 3 tentativas (`$tries = 3`) com backoff de 60s.
+6. Falhas são registradas em `failed_jobs` (job implementa método `failed`).
 
+Arquivo chave:
+- `app/Observers/TaskObserver.php`
+- `app/Jobs/SendTaskCreatedEmail.php`
+- `app/Mail/NewTaskCreated.php`
+- View: `resources/views/emails/tasks/created.blade.php`
+
+Alterar atraso (delay):
+- Atualmente: `delay(now()->addMinute())` no observer.
+- Se quiser alterar para outro período, como 5 minutos: `->delay(now()->addMinutes(5))`.
+
+Verificando fila (Postgres):
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/api/login \
-	-H 'Content-Type: application/json' \
-	-d '{"email":"master@local.test","password":"master123"}')
-TOKEN=$(echo "$TOKEN" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+docker compose exec db psql -U ${DB_USERNAME:-backend} -d ${DB_DATABASE:-backend} -c "SELECT id,queue,attempts,available_at,created_at FROM jobs ORDER BY id DESC LIMIT 10;"
 ```
 
-2) Listar users (master):
-
+Logs do Job:
 ```bash
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/users | jq
+docker compose logs --since=5m worker | grep SendTaskCreatedEmail
+docker compose exec app tail -n 200 storage/logs/laravel.log | grep SendTaskCreatedEmail
 ```
 
-3) Criar usuário (master):
-
+Reprocessar manualmente (se necessário):
 ```bash
-curl -s -X POST http://localhost:8080/api/users \
-	-H "Authorization: Bearer $TOKEN" \
-	-H 'Content-Type: application/json' \
-	-d '{
-		"name":"Admin Foo",
-		"email":"admin@foo.test",
-		"password":"secret123",
-		"role":"admin",
-		"tenant_id":1
-	}' | jq
+docker compose exec app php artisan queue:retry all
 ```
+
+## Configuração de E-mail (Mailtrap)
+
+Exemplo de variáveis no `backend/.env`:
+```
+MAIL_MAILER=smtp
+MAIL_HOST=sandbox.smtp.mailtrap.io
+MAIL_PORT=2525
+MAIL_USERNAME=seu_user
+MAIL_PASSWORD=seu_pass
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="no-reply@local.test"
+MAIL_FROM_NAME="Projeto"
+
+QUEUE_CONNECTION=database
+```
+
+## Banco de Dados da Fila
+
+- Driver atual: database (`jobs` e `failed_jobs`).
+- Índices adicionados (migration `2025_09_26_010000_add_indexes_to_jobs_table`):
+	* (`queue`, `reserved_at`)
+	* (`available_at`)
+- Tabela `failed_jobs` recriada condicionalmente para evitar falhas se removida.
+
+Migrar caso ainda não aplicado:
+```bash
+docker compose exec app php artisan migrate --force
+```
+
+Switch para Redis (opcional futura melhoria):
+1. Ajustar `.env`: `QUEUE_CONNECTION=redis`.
+2. Garantir serviço `redis` ativo (já existe).
+3. (Opcional) Instalar Horizon para painel: `composer require laravel/horizon` e criar serviço no compose rodando `php artisan horizon`.
+
+## Logs e Troubleshooting de Fila
+
+Ver status rápido:
+```bash
+docker compose logs --tail=50 worker
+```
+
+Jobs presos (ver se `available_at` está no futuro):
+```bash
+docker compose exec db psql -U ${DB_USERNAME:-backend} -d ${DB_DATABASE:-backend} -c "SELECT id,queue,attempts,available_at,EXTRACT(EPOCH FROM NOW()) AS now_epoch FROM jobs ORDER BY id;"
+```
+
+Forçar execução imediata (remover delay provisoriamente): alterar o observer e recriar task.
 
 Solução de problemas
 - Erro ao criar usuário/grupo no build (PUID/PGID vazios): o Dockerfile já tem defaults e não falha sem variáveis. Se precisar rebuildar:

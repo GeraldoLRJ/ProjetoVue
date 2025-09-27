@@ -15,11 +15,27 @@ return new class extends Migration
     public function up(): void
     {
         if (Schema::hasColumn('tasks', 'tenant_id')) {
-            DB::statement('ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_tenant_id_foreign');
+            try {
+                DB::statement('ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_tenant_id_foreign');
+            } catch (\Throwable $e) {
+            }
 
-            DB::statement('DROP INDEX IF EXISTS tasks_tenant_id_status_index');
-            DB::statement('DROP INDEX IF EXISTS tasks_tenant_id_due_date_index');
-            DB::statement('DROP INDEX IF EXISTS tasks_tenant_due_date_index');
+            try {
+                DB::statement('DROP INDEX IF EXISTS tasks_tenant_id_status_index');
+            } catch (\Throwable $e) {
+            }
+
+            try {
+                DB::statement('DROP INDEX IF EXISTS tasks_tenant_id_due_date_index');
+            } catch (\Throwable $e) {
+                // ignore if index does not exist
+            }
+
+            try {
+                DB::statement('DROP INDEX IF EXISTS tasks_tenant_due_date_index');
+            } catch (\Throwable $e) {
+                // ignore if index does not exist
+            }
 
             Schema::table('tasks', function (Blueprint $table) {
                 $table->dropColumn('tenant_id');

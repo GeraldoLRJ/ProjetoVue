@@ -93,12 +93,25 @@ class UserAdminController extends Controller
             'name' => ['sometimes','required','string','max:255'],
             'email' => ['sometimes','required','email','max:255'],
             'password' => ['sometimes','nullable','string','min:6'],
-            'role' => ['sometimes', Rule::in([User::ROLE_ADMIN, User::ROLE_USER])],
         ];
+
+        if ($user->role !== User::ROLE_MASTER) {
+            $rules['role'] = ['sometimes', Rule::in([User::ROLE_ADMIN, User::ROLE_USER])];
+        }
+
         $data = $request->validate($rules);
 
         if ($authUser->role !== User::ROLE_MASTER && ($data['role'] ?? null) === User::ROLE_MASTER) {
             return response()->json(['message' => 'admin não pode promover a master ou alterar o usuário master'], 401);
+        }
+        if (array_key_exists('role', $data)) {
+            if ($user->role === User::ROLE_MASTER && $data['role'] !== User::ROLE_MASTER) {
+                return response()->json(['message' => 'Não é permitido alterar a role de um usuário master'], 403);
+            }
+        }
+
+        if ($user->role === User::ROLE_MASTER) {
+            unset($data['role']);
         }
 
         if (isset($data['email'])) {

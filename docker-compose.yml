@@ -105,6 +105,41 @@ services:
     networks:
       - backend
 
+  scheduler:
+    build:
+      context: ./docker/php
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    container_name: backend-scheduler
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+    depends_on:
+      - app
+    entrypoint: ["sh", "-c", "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"]
+    restart: unless-stopped
+    networks:
+      - backend
+
+  worker:
+    build:
+      context: ./docker/php
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    container_name: backend-worker
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+    depends_on:
+      - app
+      - db
+    entrypoint: ["sh", "-c", "php artisan queue:work --queue=emails,default --tries=3 --sleep=2 --verbose"]
+    restart: unless-stopped
+    networks:
+      - backend
+
 volumes:
   db_data:
   redis_data:
