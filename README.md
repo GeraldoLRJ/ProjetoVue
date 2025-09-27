@@ -1,6 +1,8 @@
 # Projeto Dockerizado: Laravel 8 + Postgres + Redis
 
-Este repositório contém a infraestrutura Docker para subir um projeto Laravel 8 chamado `backend`, com Postgres e Redis.
+@Bonus (Docker)
+
+Este repositório contém a infraestrutura Docker para subir um projeto Laravel 8 + Vue 2.
 
 Componentes
 - PHP-FPM 8.0 (app)
@@ -104,7 +106,11 @@ Primeiro acesso:
 - Frontend: http://localhost:8081
 - Backend API: http://localhost:8080/api
 
-Login de teste (seed):
+@Bonus (Criação de Usuário)
+
+Login master e primeira empresa (seed):
+
+- Primeira empresa : Master Company
 
 - E-mail: master@local.test
 - Senha: master123
@@ -153,6 +159,8 @@ Notas:
         'http://localhost:8081',
         'http://127.0.0.1:8081',
     ],
+
+@Bonus (Filas)
 
 ## Fila de E-mails (Notificação de Nova Task)
 
