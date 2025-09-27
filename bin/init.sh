@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 
+# Detecta usuário real (evita root:root quando roda via sudo)
+HOST_USER="${SUDO_USER:-$(id -un)}"
+HOST_UID="$(id -u "$HOST_USER")"
+HOST_GID="$(id -g "$HOST_USER")"
+
 # Criação / detecção do projeto Laravel 8 em ./backend
 if [ "${FORCE_INIT:-0}" = "1" ]; then
   echo "FORCE_INIT=1 detectado. Removendo conteúdo de ./backend e reinstalando Laravel 8..."
@@ -12,6 +17,17 @@ if [ "${FORCE_INIT:-0}" = "1" ]; then
 fi
 
 mkdir -p "$BACKEND_DIR"
+
+# Garante estrutura base antes de qualquer composer/artisan
+mkdir -p \
+  "$BACKEND_DIR/storage/framework" \
+  "$BACKEND_DIR/storage/framework/cache" \
+  "$BACKEND_DIR/storage/framework/sessions" \
+  "$BACKEND_DIR/storage/framework/views" \
+  "$BACKEND_DIR/storage/framework/testing" \
+  "$BACKEND_DIR/storage/logs" \
+  "$BACKEND_DIR/bootstrap/cache"
+touch "$BACKEND_DIR/storage/logs/laravel.log" || true
 
 ARTISAN_FILE="$BACKEND_DIR/artisan"
 COMPOSER_JSON="$BACKEND_DIR/composer.json"
@@ -32,7 +48,7 @@ if [ -f "$ARTISAN_FILE" ] || [ -f "$COMPOSER_JSON" ]; then
         "$BACKEND_DIR/storage/framework/views" \
         "$BACKEND_DIR/storage/framework/testing" \
         "$BACKEND_DIR/bootstrap/cache"
-      chmod -R ug+rwX "$BACKEND_DIR/storage" "$BACKEND_DIR/bootstrap/cache" || true
+  chmod -R ug+rwX "$BACKEND_DIR/storage" "$BACKEND_DIR/bootstrap/cache" || true
       docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer install --no-interaction
       docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer config platform.php 8.0.30 || true
     else
@@ -60,7 +76,8 @@ fi
 echo "Ajustando permissões e proprietário..."
 chmod -R ug+rwX "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" || true
 find "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" -type d -exec chmod 775 {} + || true
-chown -R $(id -u):$(id -g) "$ROOT_DIR/backend" || true
+# Se foi executado com sudo, aplica permissões ao usuário original, não root
+chown -R "$HOST_UID":"$HOST_GID" "$ROOT_DIR/backend" || true
 
 if [ -d "$BACKEND_DIR/vendor" ]; then
   echo "Executando passos artisan (vendor presente)..."
