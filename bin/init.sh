@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
+FRONTEND_DIR="$ROOT_DIR/frontend"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 
 echo "==> Verificando acesso ao Docker"
@@ -29,6 +30,16 @@ if [ ! -f "$BACKEND_DIR/.env" ]; then
   echo "Criado a partir do template."
 else
   echo ".env existente."
+fi
+
+echo "==> frontend .env"
+if [ -d "$FRONTEND_DIR" ]; then
+  if [ ! -f "$FRONTEND_DIR/.env" ] && [ -f "$FRONTEND_DIR/.env.example" ]; then
+    cp "$FRONTEND_DIR/.env.example" "$FRONTEND_DIR/.env"
+    echo "frontend/.env criado a partir de .env.example"
+  else
+    echo "frontend/.env já existe ou não há .env.example"
+  fi
 fi
 
 echo "==> Dependências Composer"
