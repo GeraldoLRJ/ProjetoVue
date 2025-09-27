@@ -54,15 +54,24 @@ Passo a passo
 	docker compose exec app php artisan migrate
 	docker compose exec app php artisan db:seed
 
-4) Acessar a aplicação:
-	http://localhost:8080
-
-5) Rodar comandos do Artisan (exemplos):
+4) Rodar comandos do Artisan (exemplos):
 	docker compose run --rm artisan migrate
 	docker compose run --rm artisan tinker
 
-6) (Opcional) Ver logs de fila em tempo real:
+5) (Opcional) Ver logs de fila em tempo real:
 	docker compose logs -f worker
+
+6) Caso o CORS bloquie o acesso do frontend na porta 8081, pode alterar em backend/config/cors.php, altere
+	'allowed_origins' => [
+        'http://localhost:8081',
+        'http://127.0.0.1:8081',
+    ],
+
+	para 
+
+	'allowed_origins' => ['*'],
+
+	Em seguida rode compose restart backend-app backend-web
 
 Atalhos com Makefile (opcional)
 - make init
@@ -204,10 +213,10 @@ Exemplo de variáveis no `backend/.env`:
 ```
 MAIL_MAILER=smtp
 MAIL_HOST=sandbox.smtp.mailtrap.io
-MAIL_PORT=2525
+MAIL_PORT=587
 MAIL_USERNAME=seu_user
 MAIL_PASSWORD=seu_pass
-MAIL_ENCRYPTION=null
+MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS="no-reply@local.test"
 MAIL_FROM_NAME="Projeto"
 
@@ -253,3 +262,5 @@ Solução de problemas
 - Composer exigindo PHP >= 8.2 no `artisan`: o script `init.sh` já fixa `platform.php` para 8.0.30 e roda `composer update` automaticamente. Em projetos existentes, você pode fazer manualmente:
 	docker compose run --rm composer config platform.php 8.0.30
 	docker compose run --rm composer update --no-interaction
+- No caso de `JWT_SECRET` permaneça vazio após o `./bin/init.sh` (a linha fica apenas `JWT_SECRET=`), gere novamente:  `docker compose exec app php artisan jwt:secret --force`
+	- Se mesmo assim continuar vazio, verifique permissões do arquivo `backend/.env` (chmod 664) e limpe config: `docker compose exec artisan config:clear`

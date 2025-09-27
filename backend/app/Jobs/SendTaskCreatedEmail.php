@@ -53,6 +53,7 @@ class SendTaskCreatedEmail implements ShouldQueue
             'task_id' => $this->task->id ?? null,
             'queue' => $this->queue,
         ]);
+        $this->task->loadMissing('user');
         $user = $this->task->user;
         if (!$user || !$user->email) {
             Log::warning('SendTaskCreatedEmail: missing user/email', [
