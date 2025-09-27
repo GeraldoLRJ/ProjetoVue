@@ -78,8 +78,8 @@ fi
 
 # Opcionalmente execute migrações e seeders
 if [ "${RUN_DB_MIGRATIONS:-0}" = "1" ]; then
-  echo "Subindo serviços de banco (db, redis) para migrações..."
-  docker compose -f "$ROOT_DIR/docker-compose.yml" up -d db redis
+  echo "Subindo serviço de banco (db) para migrações..."
+  docker compose -f "$ROOT_DIR/docker-compose.yml" up -d db
   echo "Executando migrações..."
   docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan migrate --force || true
   if [ "${RUN_DB_SEEDERS:-0}" = "1" ]; then
