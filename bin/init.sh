@@ -5,17 +5,34 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 
-# Cria projeto Laravel 8 em ./backend usando o contêiner composer
+# Criação / detecção do projeto Laravel 8 em ./backend
 if [ "${FORCE_INIT:-0}" = "1" ]; then
   echo "FORCE_INIT=1 detectado. Removendo conteúdo de ./backend e reinstalando Laravel 8..."
   rm -rf "$BACKEND_DIR"/* "$BACKEND_DIR"/.[!.]* "$BACKEND_DIR"/..?* 2>/dev/null || true
 fi
 
-if [ -d "$BACKEND_DIR/vendor" ] && [ "${FORCE_INIT:-0}" != "1" ]; then
-  echo "Laravel já inicializado em ./backend. Pulando criação. (Use FORCE_INIT=1 para reinstalar)"
+mkdir -p "$BACKEND_DIR"
+
+ARTISAN_FILE="$BACKEND_DIR/artisan"
+COMPOSER_JSON="$BACKEND_DIR/composer.json"
+
+if [ -f "$ARTISAN_FILE" ] || [ -f "$COMPOSER_JSON" ]; then
+  if [ "${FORCE_INIT:-0}" = "1" ]; then
+    echo "Reinstalando projeto (FORCE_INIT=1)..."
+    docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer create-project --prefer-dist laravel/laravel:^8.0 .
+  else
+    echo "Projeto Laravel já presente em ./backend (artisan ou composer.json encontrado)."
+    if [ ! -d "$BACKEND_DIR/vendor" ]; then
+      echo "Diretório vendor ausente. Executando composer install..."
+      docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer install --no-interaction
+      docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer config platform.php 8.0.30 || true
+    else
+      echo "Dependências já instaladas (vendor existe). Pulando composer install."
+    fi
+  fi
 else
-  echo "Baixando Laravel 8 em ./backend..."
-  mkdir -p "$BACKEND_DIR"
+  # Projeto não existe: criar via create-project
+  echo "Baixando Laravel 8 em ./backend (novo projeto)..."
   docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer create-project --prefer-dist laravel/laravel:^8.0 .
   echo "Fixando plataforma do Composer para PHP 8.0.30 e atualizando dependências..."
   docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer config platform.php 8.0.30
