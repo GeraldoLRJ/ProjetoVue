@@ -24,6 +24,15 @@ if [ -f "$ARTISAN_FILE" ] || [ -f "$COMPOSER_JSON" ]; then
     echo "Projeto Laravel já presente em ./backend (artisan ou composer.json encontrado)."
     if [ ! -d "$BACKEND_DIR/vendor" ]; then
       echo "Diretório vendor ausente. Executando composer install..."
+      echo "Garantindo diretórios de cache do Laravel..."
+      mkdir -p \
+        "$BACKEND_DIR/storage/framework" \
+        "$BACKEND_DIR/storage/framework/cache" \
+        "$BACKEND_DIR/storage/framework/sessions" \
+        "$BACKEND_DIR/storage/framework/views" \
+        "$BACKEND_DIR/storage/framework/testing" \
+        "$BACKEND_DIR/bootstrap/cache"
+      chmod -R ug+rwX "$BACKEND_DIR/storage" "$BACKEND_DIR/bootstrap/cache" || true
       docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer install --no-interaction
       docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm composer config platform.php 8.0.30 || true
     else
@@ -47,20 +56,25 @@ else
   cp "$ROOT_DIR/docker/laravel/env.laravel" "$ROOT_DIR/backend/.env"
 fi
 
-# Ajusta permissões e proprietário para storage e bootstrap/cache
+# Ajusta permissões e proprietário para storage e bootstrap/cache (garante antes de artisan)
 echo "Ajustando permissões e proprietário..."
 chmod -R ug+rwX "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" || true
 find "$ROOT_DIR/backend/storage" "$ROOT_DIR/backend/bootstrap/cache" -type d -exec chmod 775 {} + || true
 chown -R $(id -u):$(id -g) "$ROOT_DIR/backend" || true
 
-echo "Criando link de storage -> public/storage (se necessário)..."
-docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan storage:link || true
+if [ -d "$BACKEND_DIR/vendor" ]; then
+  echo "Executando passos artisan (vendor presente)..."
+  echo "Criando link de storage -> public/storage (se necessário)..."
+  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan storage:link || true
 
-echo "Gerando key do app..."
-docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan key:generate
+  echo "Gerando key do app..."
+  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan key:generate || true
 
-echo "Gerando JWT_SECRET (jwt:secret)..."
-docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan jwt:secret --force || true
+  echo "Gerando JWT_SECRET (jwt:secret)..."
+  docker compose -f "$ROOT_DIR/docker-compose.yml" run --rm artisan jwt:secret --force || true
+else
+  echo "Dependências não instaladas (vendor ausente). Pulando comandos artisan agora. Rode novamente após install se necessário."
+fi
 
 # Opcionalmente execute migrações e seeders
 if [ "${RUN_DB_MIGRATIONS:-0}" = "1" ]; then
