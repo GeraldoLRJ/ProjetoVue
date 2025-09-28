@@ -54,14 +54,10 @@ Passo a passo
 	docker compose exec app php artisan migrate
 	docker compose exec app php artisan db:seed
 
-4) Rodar comandos do Artisan (exemplos):
-	docker compose run --rm artisan migrate
-	docker compose run --rm artisan tinker
-
-5) (Opcional) Ver logs de fila em tempo real:
+4) (Opcional) Ver logs de fila em tempo real:
 	docker compose logs -f worker
 
-6) Caso o CORS bloquie o acesso do frontend na porta 8081, pode alterar em backend/config/cors.php, altere
+5) Caso o CORS bloquie o acesso do frontend na porta 8081, pode alterar em backend/config/cors.php, altere
 	'allowed_origins' => [
         'http://localhost:8081',
         'http://127.0.0.1:8081',
